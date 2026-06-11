@@ -1,0 +1,1187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Forge Protocol"/>
+<meta name="theme-color" content="#0e0e0e"/>
+<title>Forge Protocol</title>
+<link rel="manifest" href="manifest.json"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{background:#0e0e0e;color:#fff;font-family:'DM Mono','Courier New',monospace;overscroll-behavior:none;}
+input,textarea,button{font-family:'DM Mono','Courier New',monospace;}
+textarea{-webkit-appearance:none;}
+::-webkit-scrollbar{width:0;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js" crossorigin="anonymous"></script>
+<script type="text/babel" data-presets="react">
+
+const { useState, useEffect, useRef } = React;
+
+// ----------------------------------------
+const SB_URL = "https://qwejbpaijithpqrcmqpw.supabase.co";
+const SB_KEY = "sb_publishable_zTHuOsJ5P-O3WfYTAAt-SQ_4DjFRps0";
+async function sbGet(table, userKey, weekId) {
+  const url = weekId
+    ? `${SB_URL}/rest/v1/${table}?key=eq.${encodeURIComponent(userKey)}&week_id=eq.${weekId}&select=*`
+    : `${SB_URL}/rest/v1/${table}?key=eq.${encodeURIComponent(userKey)}&select=*`;
+  const r = await fetch(url, { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+  return r.ok ? r.json() : [];
+}
+async function sbUpsert(table, row) {
+  await fetch(`${SB_URL}/rest/v1/${table}`, {
+    method: "POST",
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates" },
+    body: JSON.stringify(row),
+  });
+}
+
+// ----------------------------------------
+const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const FULL_DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+const DIWALI = new Date("2026-11-08");
+const START_DATE = new Date("2026-06-11");
+const DAYS_TO_DIWALI = Math.max(0, Math.ceil((DIWALI - new Date()) / 86400000));
+const TOTAL_PLAN_DAYS = 150;
+const CURRENT_PLAN_DAY = Math.min(TOTAL_PLAN_DAYS, Math.max(1, Math.ceil((new Date() - START_DATE) / 86400000) + 1));
+const WEEKS_TO_DIWALI = Math.floor(DAYS_TO_DIWALI / 7);
+const HABITS_IDS = ["posture","water","pullups_gym","sleep","micro","diet","win"];
+const HABIT_LABELS = {posture:"Posture",water:"Water",pullups_gym:"Pull-ups",sleep:"Sleep",micro:"Micro-moves",diet:"Diet",win:"1% Win"};
+
+const PHASES = [
+  { id:1, name:"Foundation", days:[1,50],   color:"#4ade80", badge:"🌱", focus:"Movement quality, posture reset, tendon conditioning", pullUpTarget:"3-5 reps/set", gymSets:"3×8-10", restBetween:"90s" },
+  { id:2, name:"Build",      days:[51,110],  color:"#facc15", badge:"⚡", focus:"Strength accumulation, boxing power, hypertrophy",    pullUpTarget:"6-12 reps/set",gymSets:"4×8-12", restBetween:"60s" },
+  { id:3, name:"Peak",       days:[111,150], color:"#f97316", badge:"🔥", focus:"Max pull-up reps, explosive boxing, full athleticism", pullUpTarget:"13-20 reps/set",gymSets:"5×10-15",restBetween:"45s" },
+];
+function getPhase(day) { return PHASES.find(p => day >= p.days[0] && day <= p.days[1]) || PHASES[0]; }
+
+// ----------------------------------------
+const PLAN_WORKOUTS = {
+  gym: {
+    Foundation: { title:"Foundation Gym Session", duration:"55-65 min",
+      warmup:["5 min treadmill walk incline 4","Arm circles 20×","Hip rotations 20×","Cat-cow 10 reps"],
+      main:[
+        {exercise:"Lat Pulldown (pull-up prep)",sets:"3×10",note:"Slow eccentric - 3 sec down"},
+        {exercise:"Seated Cable Row",sets:"3×10",note:"Retract scapula at peak"},
+        {exercise:"Dumbbell Bench Press",sets:"3×10",note:"Pause 1s at chest"},
+        {exercise:"Goblet Squat",sets:"3×12",note:"Chest tall, knees tracking toes"},
+        {exercise:"Face Pulls",sets:"3×15",note:"POSTURE - never skip this"},
+        {exercise:"Plank Hold",sets:"3×30s",note:"Neutral spine, breathe"},
+      ],
+      cooldown:["Child's pose 60s","Doorway chest stretch 30s×2","Lat stretch on bar 30s×2"],
+      pullUpNote:"Assisted pull-ups or band-assisted: 3 sets to comfortable failure",
+    },
+    Build: { title:"Build Gym Session", duration:"65-75 min",
+      warmup:["5 min row machine","Band pull-aparts 20×","Thoracic rotations","Shoulder CARs"],
+      main:[
+        {exercise:"Pull-ups (bodyweight)",sets:"4×max",note:"Rest 90s between sets - log every rep"},
+        {exercise:"Weighted Dip or Chest Press",sets:"4×8",note:"Add 2.5kg when 10 reps feel easy"},
+        {exercise:"Barbell Row",sets:"4×8",note:"Chest to bar, not chin"},
+        {exercise:"Bulgarian Split Squat",sets:"3×10 each",note:"Fixes hip imbalances"},
+        {exercise:"Overhead Press",sets:"3×10",note:"Ribs down, don't flare"},
+        {exercise:"Cable Face Pull",sets:"4×15",note:"External rotation emphasis"},
+        {exercise:"Dead Hang",sets:"3×max sec",note:"Grip + shoulder health"},
+      ],
+      cooldown:["Hang from bar passive 60s","Pigeon stretch 60s each","Foam roll lats"],
+      pullUpNote:"Target: 8-14 total reps across work sets. Log trend weekly.",
+    },
+    Peak: { title:"Peak Gym Session", duration:"70-80 min",
+      warmup:["5 min bike high cadence","Scapular push-ups 15×","Jump rope 2 min","Dead hang 20s"],
+      main:[
+        {exercise:"Pull-ups - Cluster sets",sets:"5×(3+3+3)",note:"10s rest between clusters, 2 min between sets"},
+        {exercise:"Weighted Pull-up",sets:"3×4",note:"+5kg belt - strength carries to bodyweight reps"},
+        {exercise:"Push Press",sets:"4×6",note:"Explosive - boxing power transfer"},
+        {exercise:"Trap Bar Deadlift",sets:"4×5",note:"Full-body strength peak"},
+        {exercise:"Ring Row / TRX Row",sets:"4×12",note:"Scapular control under fatigue"},
+        {exercise:"Landmine Rotation",sets:"3×12 each",note:"Boxing rotational power"},
+      ],
+      cooldown:["Full upper body hang series","Thoracic foam roll 3 min","Hip flexor stretch 90s each"],
+      pullUpNote:"THIS is your Diwali test prep. Target: 15-20 reps in one set.",
+    },
+  },
+  home: {
+    Foundation: { title:"Foundation Home Session", duration:"35-45 min",
+      warmup:["March in place 2 min","Neck half-rolls 10×","Shoulder rolls 15×","Spinal waves 10×"],
+      main:[
+        {exercise:"Push-ups (scapular focus)",sets:"3×10",note:"Protract scapula at top"},
+        {exercise:"Pike Push-up",sets:"3×8",note:"Shoulder health builder"},
+        {exercise:"Glute Bridge",sets:"3×15",note:"Squeeze 2s at top - posture reset"},
+        {exercise:"Dead Bug",sets:"3×8 each",note:"Core anti-extension - back health"},
+        {exercise:"Wall Angels",sets:"3×10",note:"Back flat against wall the whole time"},
+        {exercise:"Superman Hold",sets:"3×10",note:"2s hold each rep"},
+      ],
+      cooldown:["Child's pose 60s","Thread the needle 30s each","Legs up the wall 2 min"],
+      tip:"Fits in morning before Arjun wakes. 35 min, no equipment.",
+    },
+    Build: { title:"Build Home Session", duration:"40-50 min",
+      warmup:["Jump rope or high knees 3 min","Hip CARs 10×","Thoracic extension over chair"],
+      main:[
+        {exercise:"Push-up Variations",sets:"4×12",note:"Rotate: wide / narrow / archer each session"},
+        {exercise:"Pike to Downdog",sets:"3×10",note:"Slow flow, feel lat stretch"},
+        {exercise:"Single Leg Glute Bridge",sets:"3×12 each",note:"Hip stability for boxing"},
+        {exercise:"Plank Shoulder Taps",sets:"3×20 total",note:"Anti-rotation core"},
+        {exercise:"Reverse Snow Angels (floor)",sets:"3×12",note:"Posture gold - do not skip"},
+        {exercise:"Squat to Calf Raise",sets:"3×15",note:"Leg endurance for boxing stance"},
+      ],
+      cooldown:["Pigeon pose 60s each","Seated forward fold 60s","Supine twist 45s each"],
+      tip:"Evening after 8pm. Moderate intensity - aids recovery for gym days.",
+    },
+    Peak: { title:"Peak Home Session", duration:"45-55 min",
+      warmup:["Shadow box footwork 3 min","Arm swings 20×","Leg swings 15× each"],
+      main:[
+        {exercise:"Explosive Push-ups",sets:"5×8",note:"Clap or fast concentric"},
+        {exercise:"Tuck Jumps",sets:"4×10",note:"Land soft - knee over toe"},
+        {exercise:"Pistol Squat Progression",sets:"3×6 each",note:"Use chair assist as needed"},
+        {exercise:"Hollow Body Hold",sets:"4×30s",note:"Direct pull-up carryover"},
+        {exercise:"Commando Plank",sets:"3×8 each",note:"Up-down plank, keep hips level"},
+        {exercise:"Diamond Push-ups",sets:"3×max",note:"Tricep lockout = pull-up lockout"},
+      ],
+      cooldown:["Down dog → pigeon → lunge → twist flow 5 min","Savasana 2 min"],
+      tip:"If energy is low, swap to Yoga/Stretch. Never force Peak intensity depleted.",
+    },
+  },
+  shadowBoxing: {
+    Foundation: { title:"Shadow Boxing - Technical Foundations", duration:"20-30 min",
+      rounds:[
+        {round:1,focus:"Orthodox stance + footwork only",duration:"3 min",rest:"1 min"},
+        {round:2,focus:"Jab only - snap and retract",duration:"3 min",rest:"1 min"},
+        {round:3,focus:"Jab-Cross combo. Pivot after cross",duration:"3 min",rest:"1 min"},
+        {round:4,focus:"Slips + jab counter",duration:"3 min",rest:"1 min"},
+        {round:5,focus:"Freestyle - slow motion, feel every muscle",duration:"3 min",rest:"--"},
+      ],
+      cues:["Chin down, eyes up always","Return hand to guard after every punch","Breathe out on every shot","Back heel off floor in stance"],
+      cooldown:["Wrist circles","Shoulder cross-body stretch","Neck stretch each side"],
+    },
+    Build: { title:"Shadow Boxing - Combination Builder", duration:"30-40 min",
+      rounds:[
+        {round:1,focus:"Jab-Cross-Hook (1-2-3)",duration:"3 min",rest:"1 min"},
+        {round:2,focus:"Jab-Cross-Hook-Uppercut (1-2-3-6)",duration:"3 min",rest:"1 min"},
+        {round:3,focus:"Double jab-Cross-Bob-Counter",duration:"3 min",rest:"1 min"},
+        {round:4,focus:"Footwork: angle out after every combo",duration:"3 min",rest:"1 min"},
+        {round:5,focus:"Speed round - 50% power, 100% speed",duration:"3 min",rest:"1 min"},
+        {round:6,focus:"Pressure fighter simulation - walk them down",duration:"3 min",rest:"--"},
+      ],
+      cues:["Rotate hips into every punch","Don't telegraph jab by dropping shoulder","Keep lead hand up when throwing right hand","Weight transfer - back to front"],
+      cooldown:["Slow 1-2s for 1 min","Full shoulder stretch sequence","Hip flexor lunge stretch"],
+    },
+    Peak: { title:"Shadow Boxing - Fight Simulation", duration:"35-45 min",
+      rounds:[
+        {round:1,focus:"Southpaw switch stance - adapt defence",duration:"3 min",rest:"1 min"},
+        {round:2,focus:"Aggressive pressure: body shots + head",duration:"3 min",rest:"1 min"},
+        {round:3,focus:"Counter-punching only - react to imagined opponent",duration:"3 min",rest:"1 min"},
+        {round:4,focus:"Combination of choice - 6+ punch strings",duration:"3 min",rest:"1 min"},
+        {round:5,focus:"Champion round - max intensity, full combinations",duration:"3 min",rest:"1 min"},
+        {round:6,focus:"Tactical cool - slow slips, body movement only",duration:"3 min",rest:"1 min"},
+        {round:7,focus:"Freestyle - forget technique, just fight",duration:"3 min",rest:"--"},
+      ],
+      cues:["Exhale sharply on every punch - engage core","Stay bouncy on feet even when tired","Look where you're moving before you move","Combinations end with a defensive move"],
+      cooldown:["Shadow slow-mo 2 min","Full upper body stretch","Breathwork 4-7-8 for 3 cycles"],
+    },
+  },
+  punchBag: {
+    Foundation: { title:"Punch Bag - Power Introduction", duration:"30-40 min",
+      rounds:[
+        {round:1,focus:"Jab only - TOUCH the bag, don't punch through",duration:"2 min",rest:"1 min"},
+        {round:2,focus:"Jab-Cross - feel the bag swing, control it",duration:"2 min",rest:"1 min"},
+        {round:3,focus:"All three punches: J-C-Hook",duration:"2 min",rest:"1 min"},
+        {round:4,focus:"Body shots - protect your hands on bag",duration:"2 min",rest:"1 min"},
+        {round:5,focus:"Power round - 3 hard combos then reset",duration:"2 min",rest:"--"},
+      ],
+      cues:["Thumbs wrapped correctly before touching bag","Gloves 12-14oz minimum","Don't punch when bag swings into you","Wrists straight on impact"],
+      cooldown:["Shake out hands and wrists","Forearm massage","Shoulder stretch bilateral"],
+    },
+    Build: { title:"Punch Bag - Combination Power", duration:"40-50 min",
+      rounds:[
+        {round:1,focus:"Jab-Cross-Hook: 3 combos, pivot, repeat",duration:"3 min",rest:"1 min"},
+        {round:2,focus:"Body-Body-Head combos",duration:"3 min",rest:"1 min"},
+        {round:3,focus:"Speed round - light but fast",duration:"3 min",rest:"1 min"},
+        {round:4,focus:"Power round - max on every 4th punch",duration:"3 min",rest:"1 min"},
+        {round:5,focus:"Uppercuts from close range",duration:"3 min",rest:"1 min"},
+        {round:6,focus:"Freestyle - let instinct take over",duration:"3 min",rest:"--"},
+      ],
+      cues:["Rotate torso not just arms","Don't chase the bag when it swings","15s break if wrists hurt","Keep chin down even on bag"],
+      cooldown:["Open palm bag push-down","Neck rolls","Full shoulder roll-out"],
+    },
+    Peak: { title:"Punch Bag - Fighter Conditioning", duration:"45-55 min",
+      rounds:[
+        {round:1,focus:"Warm-up flow - all punches, no hard shots",duration:"3 min",rest:"1 min"},
+        {round:2,focus:"12-punch combinations - no hesitation",duration:"3 min",rest:"1 min"},
+        {round:3,focus:"Southpaw stance bag work",duration:"3 min",rest:"1 min"},
+        {round:4,focus:"Explosive bursts: 10 hard shots then move",duration:"3 min",rest:"1 min"},
+        {round:5,focus:"Clinch position - uppercuts + body shots",duration:"3 min",rest:"1 min"},
+        {round:6,focus:"Conditioning round: non-stop 3 min",duration:"3 min",rest:"1 min"},
+        {round:7,focus:"Championship round - everything you have",duration:"3 min",rest:"--"},
+      ],
+      cues:["Ice wrists if inflamed post-session","Mouthguard if available","Don't overtelegraph"],
+      cooldown:["1 min light shadow","Extended forearm + wrist release","Chest opener on wall","Breathwork close-out"],
+    },
+  },
+  pullUps: {
+    Foundation: { title:"Pull-Up Foundation Block", duration:"20-30 min add-on to gym",
+      drills:[
+        {week:"Weeks 1-2",drill:"Dead Hang + Scapular Pull",sets:"4×20s hang + 10 scap pulls",note:"Build shoulder girdle stability"},
+        {week:"Weeks 3-4",drill:"Assisted Pull-ups (band or machine)",sets:"4×6",note:"Full ROM only. No half reps."},
+        {week:"Weeks 5-7",drill:"Negative Pull-ups",sets:"4×5",note:"5-second controlled descent. Builds eccentric strength."},
+      ],
+      accessory:["Lat Pulldown 3×12","Straight Arm Pulldown 3×12","Bicep Curl 3×12"],
+      goal:"5 consecutive unassisted reps by Day 50",
+      checkIn:"Test Day 14, 28, 42, 50",
+    },
+    Build: { title:"Pull-Up Build Block", duration:"25-35 min within gym session",
+      drills:[
+        {week:"Weeks 8-10",drill:"Bodyweight Pull-ups - Submaximal",sets:"5 sets × 60% of max reps",note:"Never go to failure. Build volume."},
+        {week:"Weeks 11-13",drill:"Ladder Protocol",sets:"1-2-3-2-1 ladder × 3 rounds",note:"Rest 30s between rungs. Builds density."},
+        {week:"Weeks 14-15",drill:"Greasing the Groove (GTG)",sets:"3-5 reps × 5 sets throughout",note:"Never fatigued. Always quality."},
+      ],
+      accessory:["Hanging Knee Raise 3×15","Towel Pull-up 2×5 (grip)","L-Sit Hang 3×15s"],
+      goal:"10-14 consecutive reps by Day 110",
+      checkIn:"Test Day 70, 90, 110",
+    },
+    Peak: { title:"Pull-Up Peak Block - Diwali Test", duration:"30 min dedicated",
+      drills:[
+        {week:"Weeks 16-17",drill:"Heavy Negatives + Weighted Pull-ups",sets:"3×4 weighted + 3×8 bodyweight",note:"10s negatives. Overload principle."},
+        {week:"Weeks 18-19",drill:"Max Set + Volume Day split",sets:"Mon: 1 max set. Thu: 6×60% max",note:"Dual stimulus - CNS and volume"},
+        {week:"Week 20-21",drill:"Taper & Test",sets:"Reduce volume 40%. Test Day 148.",note:"Fresh = more reps. Trust the taper."},
+      ],
+      accessory:["Ring Pull-ups 3×max","Close Grip Pull-up 3×6","Typewriter Pull-up 2×4 each"],
+      goal:"20 consecutive reps by Day 148",
+      checkIn:"Test Day 120, 135, 148",
+    },
+  },
+  yoga: {
+    Foundation: { title:"Foundation Stretch & Mobility", duration:"20-30 min",
+      sequence:[
+        {pose:"Child's Pose (Balasana)",duration:"90s",benefit:"Decompress spine, hip opener"},
+        {pose:"Cat-Cow Flow",duration:"10 reps slow",benefit:"Spinal articulation, morning back reset"},
+        {pose:"Thread the Needle",duration:"45s each side",benefit:"Thoracic rotation - posture fix"},
+        {pose:"Downward Dog",duration:"60s",benefit:"Full posterior chain stretch"},
+        {pose:"Low Lunge (Anjaneyasana)",duration:"60s each side",benefit:"Hip flexor release"},
+        {pose:"Supine Spinal Twist",duration:"60s each side",benefit:"Lumbar decompression"},
+        {pose:"Legs Up the Wall",duration:"3 min",benefit:"Recovery, nervous system reset"},
+      ],
+      breathwork:"Inhale 4 counts, exhale 6 counts. Never hold breath in a stretch.",
+      note:"Do this even on rest days. Your posture goal lives here.",
+    },
+    Build: { title:"Build Mobility & Active Flexibility", duration:"30-40 min",
+      sequence:[
+        {pose:"Sun Salutation A (3 rounds)",duration:"5 min",benefit:"Full body warm-up / active stretch"},
+        {pose:"Warrior I → II → III flow",duration:"2 min each side",benefit:"Hip alignment + balance"},
+        {pose:"Pigeon Pose",duration:"90s each side",benefit:"Deep hip external rotation"},
+        {pose:"Wide-Leg Forward Fold",duration:"90s",benefit:"Inner thigh + hamstring"},
+        {pose:"Camel Pose (Ustrasana)",duration:"45s × 2",benefit:"Counter-posture for gym work"},
+        {pose:"Lizard Pose",duration:"90s each side",benefit:"Deep hip flexor + groin"},
+        {pose:"Seated Forward Fold",duration:"2 min",benefit:"Hamstring + lower back"},
+        {pose:"Savasana",duration:"3 min",benefit:"Integration"},
+      ],
+      breathwork:"Ujjayi breath throughout. Audible exhale through nose.",
+      note:"Wednesday yoga session. Keep this sacred even when busy.",
+    },
+    Peak: { title:"Peak Flexibility & Deep Recovery", duration:"35-45 min",
+      sequence:[
+        {pose:"Full Sun Salutation B (5 rounds)",duration:"8 min",benefit:"Heat build-up, full range"},
+        {pose:"Standing Split",duration:"60s each side",benefit:"Hamstring + hip mobility"},
+        {pose:"Half Splits → Full if available",duration:"2 min each side",benefit:"Hamstring depth"},
+        {pose:"King Pigeon (Eka Pada)",duration:"2 min each side",benefit:"Full hip + quad release"},
+        {pose:"Wheel Pose or Bridge",duration:"45s × 3",benefit:"Shoulder + spine extension"},
+        {pose:"Shoulder Stand or Legs Up",duration:"3 min",benefit:"Inversion recovery"},
+        {pose:"Yin Hold: Butterfly",duration:"3 min",benefit:"Inner groin, hip socket"},
+        {pose:"Savasana with breathwork",duration:"5 min",benefit:"Nervous system recovery"},
+      ],
+      breathwork:"Box breathing in Savasana: 4-4-4-4. Activates parasympathetic.",
+      note:"At this phase you should feel visibly different in posture and mobility.",
+    },
+  },
+  rest: {
+    Foundation: { title:"Active Recovery Day", mindset:"Rest days build as much as training days. Adaptation happens here.",
+      options:[
+        {type:"Gentle Walk 20-30 min",detail:"With Arjun if possible. No pace target.",benefit:"Blood flow, mental reset"},
+        {type:"Breathwork 10 min",detail:"Box breathing 4-4-4-4 for 10 cycles, lying down.",benefit:"Parasympathetic activation"},
+        {type:"Foundation Stretch 15 min",detail:"Child's pose → thread needle → supine twist → legs up wall",benefit:"Spinal decompression"},
+        {type:"Cold shower close-out (optional)",detail:"Cold last 30s of shower.",benefit:"Inflammation reduction"},
+      ],
+      avoid:["Skipping all movement","Clean eating score < 7","Screen time past midnight"],
+      nudge:"Log today as Rest. Rate your energy 1-10 in notes.",
+    },
+    Build: { title:"Strategic Recovery Day", mindset:"In the Build phase, rest quality matters more than training volume.",
+      options:[
+        {type:"Yoga Nidra 20 min",detail:"YouTube: search 'Yoga Nidra 20 min'. Deep restorative.",benefit:"Full system recovery"},
+        {type:"Mobility Flow 20 min",detail:"Phase 2 yoga sequence at 60% intensity",benefit:"Maintain flexibility gains"},
+        {type:"Light Shadow Boxing 10 min",detail:"SLOW. No combos. Just movement and breathing.",benefit:"Motor pattern retention"},
+        {type:"Nature Walk 30-40 min",detail:"Phone away. Observe. Mental clarity.",benefit:"Cortisol regulation"},
+      ],
+      avoid:["Missing sleep < 7 hrs","Processed food on rest day","Zero movement"],
+      nudge:"Check pull-up trend in the Pull-ups tab. Review last 2 weeks.",
+    },
+    Peak: { title:"Performance Recovery Day", mindset:"Champions rest like they train. Diwali is 150 days of consistent choices.",
+      options:[
+        {type:"Contrast Shower",detail:"Hot 5 min → cold 30s → repeat × 3",benefit:"Accelerated muscle recovery"},
+        {type:"Deep Yin Yoga 30 min",detail:"Long holds only. 3-5 min per pose.",benefit:"Connective tissue remodelling"},
+        {type:"Visualisation 10 min",detail:"Lie down. Mentally rehearse 20 pull-ups. Feel Diwali.",benefit:"Neurological performance priming"},
+        {type:"Journaling 5 min",detail:"What's working? What to adjust? Energy level?",benefit:"Feedback loop closure"},
+      ],
+      avoid:["Full workout on rest day","Not sleeping 8 hrs","Skipping nutrition"],
+      nudge:"You're in the final push. Trust the plan. Rest today wins Diwali.",
+    },
+  },
+};
+
+const WORKOUT_TYPES = [
+  {id:"gym",         label:"Gym",         icon:"🏋", location:"Gym",  color:"#e8ff47"},
+  {id:"home",        label:"Home",        icon:"🏠", location:"Home", color:"#47d4ff"},
+  {id:"shadowBoxing",label:"Shadow Box",  icon:"🥷", location:"Home", color:"#a78bfa"},
+  {id:"punchBag",    label:"Punch Bag",   icon:"🥊", location:"Gym",  color:"#f87171"},
+  {id:"pullUps",     label:"Pull-ups",    icon:"💪", location:"Gym",  color:"#fb923c"},
+  {id:"yoga",        label:"Yoga/Stretch",icon:"🧘", location:"Home", color:"#34d399"},
+  {id:"rest",        label:"Rest Day",    icon:"🌿", location:"Any",  color:"#94a3b8"},
+];
+
+
+// ----------------------------------------
+function getPullupPhase(w) {
+  if (w >= 16) return {phase:1,label:"FOUNDATION",color:"#47d4ff",target:5,desc:"Negatives + Dead Hangs + Scapular Pulls"};
+  if (w >= 7)  return {phase:2,label:"BUILD",color:"#e8ff47",target:12,desc:"Volume at gym -- max sets every session + weighted Thursdays"};
+  return {phase:3,label:"PEAK",color:"#ff7847",target:20,desc:"Max effort + cluster sets -- Diwali countdown"};
+}
+const PHASE = getPullupPhase(WEEKS_TO_DIWALI);
+
+const DAY_CONFIG = {
+  Monday:    {color:"#e8ff47",windows:["Morning 9:45am","Evening 8pm (after Arjun)"],gymFocus:"Upper Body + Posture",homeFocus:"Upper Body + Stretch",note:"Two windows. Morning if work clears. Evening is the backup -- never cancel."},
+  Tuesday:   {color:"#47d4ff",windows:["Morning 9:45am","Evening 8pm (after Arjun)"],gymFocus:"Lower Body + Core",homeFocus:"Lower Body + Flexibility",note:"Two windows. Either works. Morning is ideal for energy."},
+  Wednesday: {color:"#e8ff47",windows:["Evening 8pm ONLY"],gymFocus:"Full Body + Boxing",homeFocus:"Full Body + Shadow Boxing",note:"Evening only. No morning option."},
+  Thursday:  {color:"#47d4ff",windows:["Morning 9:45am","Evening 8pm (after Arjun)"],gymFocus:"Upper Body + Pull-ups",homeFocus:"Mobility + Rehab",note:"Upper focus. Pull-up work always in this session."},
+  Friday:    {color:"#a8ff87",windows:["Evening 8pm ONLY"],gymFocus:"Boxing + Conditioning",homeFocus:"Boxing Drills + Core",note:"Evening only. End-of-week power session."},
+  Saturday:  {color:"#ff7847",windows:["Anytime -- family dependent"],gymFocus:"Active Strength",homeFocus:"Active Recovery + Walk",note:"Arjun day. Home plan is default."},
+  Sunday:    {color:"#cccccc",windows:["10 min any time"],gymFocus:null,homeFocus:"Body Scan + Prep",note:"Rest day. Pack bag, scan body, review week score."},
+};
+
+const GYM_WORKOUTS = {
+  "Upper Body + Posture":[
+    {name:"Face pulls",reps:"3×15",note:"Posture cornerstone. Retract at peak."},
+    {name:"Weighted pull-ups / assisted",reps:"4×max",note:"Pull-up goal work. Log reps."},
+    {name:"Dumbbell rows",reps:"3×10 each",note:"Scapular squeeze at top."},
+    {name:"Overhead press",reps:"3×8",note:"Core braced, no lumbar arch."},
+    {name:"Band pull-aparts",reps:"3×20",note:"Between every pressing set."},
+    {name:"Wall angels",reps:"2×10",note:"Spine contact maintained."},
+    {name:"Dead hangs",reps:"3×20-30 sec",note:"Spine decompression."},
+  ],
+  "Lower Body + Core":[
+    {name:"Goblet squats",reps:"3×12",note:"Heels flat, chest proud."},
+    {name:"Romanian deadlift",reps:"3×10",note:"Hamstring stretch, posterior chain."},
+    {name:"Hip thrusts",reps:"3×12",note:"Fixes anterior pelvic tilt."},
+    {name:"Reverse lunges",reps:"3×10 each",note:"Knee-safe. Front shin vertical."},
+    {name:"Dead bug",reps:"3×10 each side",note:"Core anti-rotation."},
+    {name:"Side plank",reps:"3×30 sec each",note:"Lateral chain."},
+  ],
+  "Full Body + Boxing":[
+    {name:"Warm-up shadowboxing",reps:"3 min",note:"Light. Loosen shoulders and hips."},
+    {name:"Heavy bag -- combos 1-2-3-2",reps:"5×2 min rounds",note:"1 min rest. Stay on toes."},
+    {name:"Slip & roll drill",reps:"3×1 min",note:"Defensive movement."},
+    {name:"Kettlebell swings",reps:"3×15",note:"Boxing hip power carryover."},
+    {name:"Plank to push-up",reps:"3×10",note:"Shoulder stability."},
+    {name:"Hip + shoulder stretch",reps:"5 min",note:"Boxer's tightest areas."},
+  ],
+  "Upper Body + Pull-ups":[
+    {name:"Pull-up max test set",reps:"1×max (log it)",note:"GOAL TRACKER. Every Thursday."},
+    {name:"Weighted/band pull-ups",reps:"4×6",note:"Full ROM always."},
+    {name:"Negative pull-ups",reps:"3×5 (5 sec down)",note:"Phase 1 bread and butter."},
+    {name:"TRX / inverted rows",reps:"3×12",note:"Horizontal pull complement."},
+    {name:"Face pulls",reps:"3×15",note:"Never skip."},
+    {name:"Farmers carry",reps:"3×30 sec",note:"Grip strength = better hang."},
+  ],
+  "Boxing + Conditioning":[
+    {name:"Jump rope warm-up",reps:"3 min",note:"Footwork and rhythm."},
+    {name:"Heavy bag -- power rounds",reps:"6×2 min",note:"End-of-week energy release."},
+    {name:"Boxing footwork ladder",reps:"3×1 min",note:"In-out, side-side, pivots."},
+    {name:"Push-ups -- boxing stance",reps:"3×15",note:"Wrist alignment."},
+    {name:"Mountain climbers",reps:"3×30 sec",note:"Ring conditioning."},
+    {name:"Full body stretch",reps:"8 min",note:"Longer cool-down on Fridays."},
+  ],
+  "Active Strength":[
+    {name:"Pull-ups",reps:"3×max",note:"Log reps."},
+    {name:"Dips",reps:"3×10",note:"Full range."},
+    {name:"Cable rows",reps:"3×12",note:"If available."},
+    {name:"Leg press",reps:"3×12",note:"Glute-focused depth."},
+    {name:"Core circuit",reps:"3 rounds",note:"Dead bug, plank, hollow hold."},
+  ],
+};
+
+const HOME_WORKOUTS = {
+  "Upper Body + Stretch":[
+    {name:"Push-up variations",reps:"3×10-15",note:"Wide, narrow, archer."},
+    {name:"Table inverted rows",reps:"3×12",note:"Lie under table, pull chest to edge."},
+    {name:"Resistance band rows",reps:"3×15",note:"Door anchor or tree."},
+    {name:"Pike push-ups",reps:"3×10",note:"Shoulder press substitute."},
+    {name:"Chest + shoulder stretch",reps:"2 min total",note:"Door frame stretch."},
+    {name:"Thoracic rotation",reps:"10 each side",note:"On all-fours. Mid-back opener."},
+  ],
+  "Lower Body + Flexibility":[
+    {name:"Bodyweight squats",reps:"3×15",note:"Pause at bottom 2 sec."},
+    {name:"Glute bridge",reps:"3×15",note:"Single leg if easy."},
+    {name:"Reverse lunges",reps:"3×10 each",note:"Controlled."},
+    {name:"Hip flexor lunge stretch",reps:"45 sec each",note:"Critical for posture."},
+    {name:"Hamstring stretch",reps:"45 sec each",note:"Standing or seated."},
+    {name:"90/90 hip stretch",reps:"60 sec each side",note:"Full hip opener."},
+  ],
+  "Full Body + Shadow Boxing":[
+    {name:"Shadow boxing warm-up",reps:"3 min",note:"Light. Jab-cross-hook basics."},
+    {name:"Shadow boxing -- combo rounds",reps:"4×2 min",note:"1-2, 1-2-3, 1-2-3-2. Move feet."},
+    {name:"Burpees",reps:"3×8",note:"Boxing conditioning."},
+    {name:"Plank",reps:"3×45 sec",note:"Core for punching power."},
+    {name:"Hip mobility flow",reps:"5 min",note:"Cat-cow, hip circles."},
+  ],
+  "Mobility + Rehab":[
+    {name:"Cat-cow",reps:"10 reps",note:"Slow. Breathe per rep."},
+    {name:"Box breathing 4-4-4-4",reps:"5 rounds",note:"Reset nervous system."},
+    {name:"Band pull-aparts",reps:"3×20",note:"With resistance band or towel."},
+    {name:"Ankle + wrist circles",reps:"10 each direction",note:"Neglected joints."},
+    {name:"Neck release sequence",reps:"30 sec each side",note:"Tilt, rotate, chin tuck holds."},
+    {name:"Full body shake-out",reps:"1 min",note:"Loose and free."},
+  ],
+  "Boxing Drills + Core":[
+    {name:"Shadow boxing -- defensive focus",reps:"4×2 min",note:"Slip, roll, pull."},
+    {name:"Speed punching on pillow",reps:"3×1 min",note:"Fastest hands you have."},
+    {name:"Push-ups",reps:"3×15",note:"Keep punching muscles warm."},
+    {name:"Hollow body hold",reps:"3×30 sec",note:"The boxing core foundation."},
+    {name:"V-ups",reps:"3×10",note:"Rotational core."},
+    {name:"Hip flexor + shoulder stretch",reps:"3 min",note:"Open the boxing angles."},
+  ],
+  "Active Recovery + Walk":[
+    {name:"Walk with Arjun",reps:"20-30 min",note:"Zone 2. Counts."},
+    {name:"Calf raises (walking)",reps:"Intermittent",note:"On every curb, step."},
+    {name:"Post-walk stretch",reps:"5 min",note:"Quad, hip flexor, calf."},
+  ],
+  "Body Scan + Prep":[
+    {name:"Lie flat -- body scan",reps:"3 min",note:"Note tight spots."},
+    {name:"Gentle foam roll or self-massage",reps:"5 min",note:"Focus on sore areas."},
+    {name:"Pack gym bag",reps:"--",note:"Clothes, shoes, water bottle."},
+    {name:"Review week score + set intention",reps:"--",note:"1% better next week?"},
+  ],
+};
+
+const PULL_UP_PHASES = [
+  {week:"Wk 22-19",color:"#47d4ff",label:"Foundation",target:"3-5 reps",detail:"Dead hangs 3×30s · Scapular pulls 3×10 · Negatives 3×5 (5 sec down) · Band-assisted reps"},
+  {week:"Wk 18-15",color:"#47d4ff",label:"Foundation+",target:"5-8 reps",detail:"Negatives 4×5 · Assisted pull-ups 4×6 · Isometric hold at top 3×10s · Every gym visit"},
+  {week:"Wk 14-11",color:"#e8ff47",label:"Build",target:"8-12 reps",detail:"5 sets per gym session · Max reps each set · Add on non-pull-up days too (2 sets)"},
+  {week:"Wk 10-8", color:"#e8ff47",label:"Build+",target:"12-15 reps",detail:"Weighted pull-ups 3×5 on Thu · Max bodyweight sets all other gym days · Log every visit"},
+  {week:"Wk 7-4",  color:"#ff7847",label:"Peak",target:"15-18 reps",detail:"Cluster sets at gym (10+rest 15s+5+rest 15s+3) · Pull-ups open AND close every session"},
+  {week:"Wk 3-1",  color:"#ff5500",label:"DIWALI PUSH",target:"20 reps 🪔",detail:"Max set every gym visit · Taper volume last 3 days · Fresh hands = 20 clean reps on Nov 8"},
+];
+
+const HABITS = [
+  {id:"posture",icon:"🏛",title:"Posture checks ×3",desc:"10am, 1pm, 4pm. Chin tuck, shoulder roll, spine tall. 30 seconds each. Over 90 days this rewires your default position."},
+  {id:"water",icon:"💧",title:"2L water by 3pm",desc:"Bottle on desk, bottle in car. Dehydration is silent -- it drops energy, spikes hunger, and kills gym performance."},
+  {id:"pullups_gym",icon:"🔱",title:"Pull-up sets at gym",desc:"Every gym visit: get on the bar. Even on non-pull-up days, 2-3 sets before you leave. Gym-only goal -- so every gym session counts double toward Diwali."},
+  {id:"sleep",icon:"🌙",title:"10:30pm sleep anchor",desc:"In bed by 10:30. Phone face-down. Sleep is when muscle builds, posture resets, cortisol clears."},
+  {id:"micro",icon:"⚡",title:"Micro-moves every 45min",desc:"Desk timer. 10 glute squeezes, 10 shoulder shrugs, 5 neck tilts per side. Prevents desk posture locking in."},
+  {id:"diet",icon:"🥗",title:"Clean eating",desc:"You track this. Mark it here so your score reflects the full picture. 80% clean weeks compound hard."},
+  {id:"win",icon:"🧠",title:"Daily 1% win",desc:"One thing better today than yesterday. Tiny counts. What gets noticed, gets repeated."},
+];
+
+// ----------------------------------------
+function getWeekId() {
+  const now = new Date();
+  const day = now.getDay();
+  const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+  const mon = new Date(new Date(now).setDate(diff));
+  return mon.toISOString().split("T")[0];
+}
+function getTodayIdx() { const d = new Date().getDay(); return d === 0 ? 6 : d - 1; }
+const SC = p => p >= 80 ? "#a8ff87" : p >= 50 ? "#e8ff47" : p > 0 ? "#ff7847" : "#555";
+
+function Sparkline({data, color="#e8ff47", height=48}) {
+  if (!data || data.length < 2) return null;
+  const max = Math.max(...data, 1), w = 300, h = height, pad = 4;
+  const xs = data.map((_,i) => pad + (i/(data.length-1))*(w-pad*2));
+  const ys = data.map(v => h - pad - (v/max)*(h-pad*2));
+  const path = xs.map((x,i) => `${i===0?"M":"L"}${x.toFixed(1)},${ys[i].toFixed(1)}`).join(" ");
+  const area = path + ` L${xs[xs.length-1].toFixed(1)},${h} L${xs[0].toFixed(1)},${h} Z`;
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} style={{width:"100%",height,display:"block"}} preserveAspectRatio="none">
+      <path d={area} fill={color+"18"}/>
+      <path d={path} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
+      {xs.map((x,i) => <circle key={i} cx={x} cy={ys[i]} r="3" fill={color}/>)}
+    </svg>
+  );
+}
+
+// ----------------------------------------
+function PlanWorkoutCard({type, phase}) {
+  const [open, setOpen] = useState(false);
+  const w = PLAN_WORKOUTS[type] ? PLAN_WORKOUTS[type][phase.name] : null;
+  if (!w) return null;
+  const ac = phase.color;
+  return (
+    <div style={{background:"#141414",border:`1px solid ${ac}33`,borderRadius:12,overflow:"hidden",marginBottom:12}}>
+      <div onClick={() => setOpen(!open)} style={{padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",background:`linear-gradient(135deg,${ac}11,transparent)`}}>
+        <div>
+          <div style={{color:"#fff",fontWeight:700,fontSize:13}}>{w.title}</div>
+          {w.duration && <div style={{color:"#555",fontSize:10,marginTop:2}}>⏱ {w.duration}</div>}
+        </div>
+        <span style={{color:ac,fontSize:14}}>{open?"▲":"▼"}</span>
+      </div>
+      {open && (
+        <div style={{padding:"0 14px 14px"}}>
+          {w.warmup && <div style={{marginTop:10}}>
+            <div style={{color:"#facc15",fontWeight:700,fontSize:10,marginBottom:5,textTransform:"uppercase",letterSpacing:1}}>🔥 Warm-Up</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{w.warmup.map((x,i)=><span key={i} style={{background:"#1a1a1a",color:"#aaa",borderRadius:5,padding:"3px 7px",fontSize:10}}>{x}</span>)}</div>
+          </div>}
+          {w.main && <div style={{marginTop:12}}>
+            <div style={{color:ac,fontWeight:700,fontSize:10,marginBottom:6,textTransform:"uppercase",letterSpacing:1}}>💪 Main Work</div>
+            {w.main.map((ex,i)=>(
+              <div key={i} style={{padding:"6px 9px",background:"#0a0a0a",borderRadius:7,borderLeft:`3px solid ${ac}`,marginBottom:5}}>
+                <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:"#ddd",fontWeight:600,fontSize:12}}>{ex.exercise}</span><span style={{color:ac,fontSize:11,fontWeight:700}}>{ex.sets}</span></div>
+                <div style={{color:"#666",fontSize:10,marginTop:2}}>💡 {ex.note}</div>
+              </div>
+            ))}
+          </div>}
+          {w.rounds && <div style={{marginTop:12}}>
+            <div style={{color:ac,fontWeight:700,fontSize:10,marginBottom:6,textTransform:"uppercase",letterSpacing:1}}>🥊 Rounds</div>
+            {w.rounds.map((r,i)=>(
+              <div key={i} style={{display:"flex",gap:8,padding:"6px 9px",background:"#0a0a0a",borderRadius:7,borderLeft:`3px solid ${ac}`,marginBottom:5}}>
+                <span style={{color:ac,fontWeight:700,minWidth:50,fontSize:11}}>RD {r.round}</span>
+                <div><div style={{color:"#ddd",fontSize:12}}>{r.focus}</div><div style={{color:"#555",fontSize:10}}>{r.duration} · Rest {r.rest}</div></div>
+              </div>
+            ))}
+          </div>}
+          {w.drills && <div style={{marginTop:12}}>
+            <div style={{color:ac,fontWeight:700,fontSize:10,marginBottom:6,textTransform:"uppercase",letterSpacing:1}}>📈 Protocol</div>
+            {w.drills.map((d,i)=>(
+              <div key={i} style={{padding:"6px 9px",background:"#0a0a0a",borderRadius:7,borderLeft:`3px solid ${ac}`,marginBottom:5}}>
+                <div style={{color:ac,fontSize:10,fontWeight:700}}>{d.week}</div>
+                <div style={{color:"#ddd",fontSize:12}}>{d.drill} -- {d.sets}</div>
+                <div style={{color:"#666",fontSize:10}}>💡 {d.note}</div>
+              </div>
+            ))}
+          </div>}
+          {w.sequence && <div style={{marginTop:12}}>
+            <div style={{color:ac,fontWeight:700,fontSize:10,marginBottom:6,textTransform:"uppercase",letterSpacing:1}}>🧘 Sequence</div>
+            {w.sequence.map((pose,i)=>(
+              <div key={i} style={{padding:"5px 9px",background:"#0a0a0a",borderRadius:7,borderLeft:`3px solid ${ac}`,marginBottom:5}}>
+                <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:"#ddd",fontSize:12,fontWeight:600}}>{pose.pose}</span><span style={{color:ac,fontSize:11}}>{pose.duration}</span></div>
+                <div style={{color:"#666",fontSize:10}}>{pose.benefit}</div>
+              </div>
+            ))}
+          </div>}
+          {w.options && <div style={{marginTop:12}}>
+            <div style={{color:ac,fontWeight:700,fontSize:10,marginBottom:6,textTransform:"uppercase",letterSpacing:1}}>🌿 Recovery Options (pick 1-2)</div>
+            {w.options.map((opt,i)=>(
+              <div key={i} style={{padding:"6px 9px",background:"#0a0a0a",borderRadius:7,borderLeft:`3px solid ${ac}`,marginBottom:5}}>
+                <div style={{color:"#ddd",fontWeight:600,fontSize:12}}>{opt.type}</div>
+                <div style={{color:"#666",fontSize:10}}>{opt.detail}</div>
+                <div style={{color:ac,fontSize:10}}>→ {opt.benefit}</div>
+              </div>
+            ))}
+            {w.avoid && <div style={{marginTop:7,padding:"7px 9px",background:"#1a0a0a",borderRadius:7}}>
+              <div style={{color:"#f87171",fontWeight:700,fontSize:10,marginBottom:4}}>⛔ Avoid</div>
+              {w.avoid.map((a,i)=><div key={i} style={{color:"#fca5a5",fontSize:10}}>• {a}</div>)}
+            </div>}
+            {w.mindset && <div style={{color:"#a78bfa",fontStyle:"italic",fontSize:11,marginTop:8}}>"{w.mindset}"</div>}
+          </div>}
+          {w.cues && <div style={{marginTop:10,padding:"8px 9px",background:"#1a1a1a",borderRadius:7}}>
+            <div style={{color:"#facc15",fontWeight:700,fontSize:10,marginBottom:4}}>⚠ Technical Cues</div>
+            {w.cues.map((c,i)=><div key={i} style={{color:"#aaa",fontSize:11}}>• {c}</div>)}
+          </div>}
+          {w.cooldown && <div style={{marginTop:10}}>
+            <div style={{color:"#818cf8",fontWeight:700,fontSize:10,marginBottom:4,textTransform:"uppercase",letterSpacing:1}}>❄ Cool-Down</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{w.cooldown.map((x,i)=><span key={i} style={{background:"#1a1a1a",color:"#a5b4fc",borderRadius:5,padding:"3px 7px",fontSize:10}}>{x}</span>)}</div>
+          </div>}
+          {(w.pullUpNote||w.breathwork||w.tip||w.note||w.nudge) && (
+            <div style={{marginTop:10,padding:"8px 9px",background:`${ac}11`,border:`1px solid ${ac}22`,borderRadius:7}}>
+              {w.pullUpNote && <div style={{color:"#ddd",fontSize:11}}>🎯 <strong>Pull-up target:</strong> {w.pullUpNote}</div>}
+              {w.breathwork && <div style={{color:"#ddd",fontSize:11}}>🫁 <strong>Breathwork:</strong> {w.breathwork}</div>}
+              {w.tip && <div style={{color:"#ddd",fontSize:11}}>💡 {w.tip}</div>}
+              {w.note && <div style={{color:"#ddd",fontSize:11}}>🧬 {w.note}</div>}
+              {w.nudge && <div style={{color:ac,fontSize:11,marginTop:4}}>📲 {w.nudge}</div>}
+            </div>
+          )}
+          {(w.goal||w.accessory) && (
+            <div style={{marginTop:10,padding:"8px 9px",background:"#1a1a1a",borderRadius:7}}>
+              {w.goal && <div style={{color:ac,fontWeight:700,fontSize:12,marginBottom:4}}>🎯 Goal: {w.goal}</div>}
+              {w.checkIn && <div style={{color:"#666",fontSize:10,marginBottom:6}}>📅 {w.checkIn}</div>}
+              {w.accessory && <div>
+                <div style={{color:"#555",fontSize:9,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>Accessory</div>
+                {w.accessory.map((a,i)=><div key={i} style={{color:"#aaa",fontSize:11}}>• {a}</div>)}
+              </div>}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ----------------------------------------
+function SetupScreen({onSave}) {
+  const [key, setKey] = useState("");
+  const [err, setErr] = useState("");
+  function submit() {
+    const k = key.trim().toLowerCase().replace(/\s+/g,"-");
+    if (k.length < 4) { setErr("Key must be at least 4 characters."); return; }
+    localStorage.setItem("forge_userkey", k);
+    onSave(k);
+  }
+  return (
+    <div style={{minHeight:"100vh",background:"#0e0e0e",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px 24px"}}>
+      <div style={{fontSize:"9px",letterSpacing:"4px",color:"#bbbbbb",marginBottom:"6px"}}>DAILY PERFORMANCE SYSTEM</div>
+      <div style={{fontSize:"28px",fontWeight:"800",color:"#e8ff47",letterSpacing:"-1px",marginBottom:"32px"}}>FORGE PROTOCOL</div>
+      <div style={{width:"100%",maxWidth:"400px",background:"#141414",borderRadius:"12px",padding:"24px"}}>
+        <div style={{fontSize:"14px",color:"#fff",fontWeight:"700",marginBottom:"8px"}}>Set your personal key</div>
+        <div style={{fontSize:"11px",color:"#999",lineHeight:"1.6",marginBottom:"20px"}}>
+          This key syncs your data across all devices. Try <span style={{color:"#e8ff47"}}>forgeprotocol</span>
+        </div>
+        <input type="text" value={key} onChange={e=>{setKey(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&submit()} placeholder="your-personal-key"
+          style={{width:"100%",background:"#0e0e0e",border:"1px solid #333",color:"#e8ff47",fontSize:"16px",fontWeight:"700",padding:"12px 14px",borderRadius:"8px",outline:"none",marginBottom:"8px",letterSpacing:"1px"}}/>
+        {err && <div style={{fontSize:"11px",color:"#ff4747",marginBottom:"8px"}}>{err}</div>}
+        <button onClick={submit} style={{width:"100%",background:"#e8ff47",color:"#080808",border:"none",borderRadius:"8px",padding:"14px",fontSize:"13px",fontWeight:"800",letterSpacing:"2px",cursor:"pointer",marginTop:"4px"}}>START FORGE PROTOCOL</button>
+      </div>
+      <div style={{marginTop:"24px",fontSize:"10px",color:"#444",textAlign:"center"}}>Already have a key? Enter it above to load your data.</div>
+    </div>
+  );
+}
+
+// ----------------------------------------
+function App() {
+  const [userKey, setUserKey] = useState(() => localStorage.getItem("forge_userkey") || "");
+  const [weekData, setWeekDataRaw] = useState({});
+  const [pullupLogs, setPullupLogsRaw] = useState([]);
+  const [allWeeks, setAllWeeks] = useState([]);
+  const [tab, setTab] = useState("today");
+  const [selDay, setSelDay] = useState(getTodayIdx());
+  const [selWeekId, setSelWeekId] = useState(getWeekId());
+  const [expandedHabit, setExpandedHabit] = useState(null);
+  const [expandedLog, setExpandedLog] = useState(null);
+  const [progView, setProgView] = useState("overview");
+  const [pullupInput, setPullupInput] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState("");
+  const [planDay, setPlanDay] = useState(CURRENT_PLAN_DAY);
+  const [selectedWorkoutType, setSelectedWorkoutType] = useState(null);
+  const syncTimer = useRef(null);
+
+  const weekId = getWeekId();
+  const todayIdx = getTodayIdx();
+  const todayFull = FULL_DAYS[todayIdx];
+
+  useEffect(() => {
+    if (!userKey) return;
+    (async () => {
+      setSyncing(true);
+      try {
+        const wRows = await sbGet("forge_logs", userKey, weekId);
+        if (wRows.length > 0) setWeekDataRaw(wRows[0].data || {});
+        const allRows = await sbGet("forge_logs", userKey);
+        setAllWeeks(allRows);
+        const puRows = await sbGet("forge_pullups", userKey);
+        if (puRows.length > 0) setPullupLogsRaw(puRows[0].logs || []);
+      } catch(e) {}
+      setSyncing(false);
+    })();
+  }, [userKey]);
+
+  function syncWeek(data) {
+    clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(async () => {
+      try {
+        await sbUpsert("forge_logs", {key:userKey,week_id:weekId,data,updated_at:new Date().toISOString()});
+        const allRows = await sbGet("forge_logs", userKey);
+        setAllWeeks(allRows);
+        setSyncStatus("saved"); setTimeout(()=>setSyncStatus(""),2000);
+      } catch(e) { setSyncStatus("error"); }
+    }, 800);
+  }
+  function syncPullups(logs) {
+    clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(async () => {
+      try {
+        await sbUpsert("forge_pullups", {key:userKey,logs,updated_at:new Date().toISOString()});
+        setSyncStatus("saved"); setTimeout(()=>setSyncStatus(""),2000);
+      } catch(e) { setSyncStatus("error"); }
+    }, 800);
+  }
+  function setWeekData(upd) {
+    setWeekDataRaw(prev => { const next = typeof upd==="function"?upd(prev):upd; syncWeek(next); return next; });
+  }
+  function setPullupLogs(upd) {
+    setPullupLogsRaw(prev => { const next = typeof upd==="function"?upd(prev):upd; syncPullups(next); return next; });
+  }
+  function toggle(dayFull, k) {
+    setWeekData(prev => { const d=prev[dayFull]||{}; return {...prev,[dayFull]:{...d,[k]:!d[k]}}; });
+  }
+  function setGymStatus(dayFull, val) {
+    setWeekData(prev => { const d=prev[dayFull]||{}; return {...prev,[dayFull]:{...d,gym_status:val}}; });
+  }
+  function dayScore(dayFull, data) {
+    const d=(data||weekData)[dayFull]||{};
+    const total=HABITS.length+1;
+    const done=[d.workout_done,...HABITS.map(h=>d[h.id])].filter(Boolean).length;
+    return {done,total,pct:total?Math.round((done/total)*100):0};
+  }
+  function weekScore() {
+    let t=0,d=0;
+    FULL_DAYS.forEach(f=>{const s=dayScore(f);t+=s.total;d+=s.done;});
+    return t?Math.round((d/t)*100):0;
+  }
+  function logPullup() {
+    const val=parseInt(pullupInput);
+    if(!val||val<0) return;
+    setPullupLogs(prev=>[...prev,{date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),reps:val,ts:Date.now()}].slice(-60));
+    setPullupInput("");
+  }
+
+  const currentWeekFromServer=allWeeks.length>0?((allWeeks.find(r=>r.week_id===weekId)||{}).data||{}):{};
+  const effectiveCurrentWeekData=Object.keys(weekData).length>0?weekData:currentWeekFromServer;
+  const isCurrentWeek=selWeekId===weekId;
+  const selWeekRow=allWeeks.find(r=>r.week_id===selWeekId);
+  const selWeekData=isCurrentWeek?effectiveCurrentWeekData:(selWeekRow?selWeekRow.data||{}:{});
+  const selFull=FULL_DAYS[selDay]||"Monday";
+  const selCfg=DAY_CONFIG[selFull]||DAY_CONFIG["Monday"];
+  const selData=(selWeekData&&selFull&&selWeekData[selFull])?selWeekData[selFull]:{};
+  const todayData=effectiveCurrentWeekData[todayFull]||{};
+  const todayCfg=DAY_CONFIG[todayFull];
+  const ts=dayScore(todayFull);
+  const ws=weekScore();
+
+  const history=allWeeks.map(row=>{
+    const data=row.data||{};
+    let totalChecks=0,doneChecks=0,gymDays=0,homeDays=0,workoutDays=0,restDays=0;
+    const habitBreakdown={};
+    HABITS_IDS.forEach(h=>{habitBreakdown[h]=0;});
+    FULL_DAYS.forEach(day=>{
+      const d=data[day]||{};
+      totalChecks+=HABITS_IDS.length+1;
+      doneChecks+=HABITS_IDS.filter(h=>d[h]).length+(d.workout_done?1:0);
+      if(d.workout_done)workoutDays++;
+      if(d.gym_status==="gym")gymDays++;
+      if(d.gym_status==="home")homeDays++;
+      if(d.gym_status==="rest")restDays++;
+      HABITS_IDS.forEach(h=>{if(d[h])habitBreakdown[h]++;});
+    });
+    return {weekId:row.week_id,weekStart:new Date(row.week_id),score:totalChecks?Math.round((doneChecks/totalChecks)*100):0,gymDays,homeDays,workoutDays,restDays,habitBreakdown,raw:data};
+  }).sort((a,b)=>a.weekStart-b.weekStart);
+
+  const bestPullup=pullupLogs.length?Math.max(...pullupLogs.map(l=>l.reps)):0;
+  const lastPullup=pullupLogs.length?pullupLogs[pullupLogs.length-1].reps:0;
+  const pullupPct=Math.min(100,Math.round((bestPullup/20)*100));
+
+  const S=(t)=>({background:tab===t?"#e8ff47":"transparent",color:tab===t?"#080808":"#999",border:`1px solid ${tab===t?"#e8ff47":"#2a2a2a"}`,padding:"5px 9px",borderRadius:"4px",fontSize:"9px",letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer",fontFamily:"inherit",fontWeight:tab===t?"800":"400"});
+  const CB=(checked,color="#a8ff87")=>(<div style={{width:"18px",height:"18px",borderRadius:"3px",flexShrink:0,border:`2px solid ${checked?color:"#888"}`,background:checked?color:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>{checked&&<span style={{color:"#080808",fontSize:"10px",fontWeight:"800"}}>✓</span>}</div>);
+  const LBL=(text)=><div style={{fontSize:"9px",color:"#dddddd",letterSpacing:"3px",marginBottom:"10px",marginTop:"4px"}}>{text}</div>;
+  const CARD=(children,ex={})=>(<div style={{background:"#141414",border:"1px solid #2a2a2a",borderRadius:"10px",padding:"14px 16px",marginBottom:"10px",...ex}}>{children}</div>);
+  const STAT=(label,value,sub,color="#e8ff47")=>(<div style={{background:"#141414",border:`1px solid ${color}20`,borderTop:`2px solid ${color}`,borderRadius:"8px",padding:"12px 14px",flex:1}}><div style={{fontSize:"9px",color:"#999",letterSpacing:"2px",marginBottom:"4px"}}>{label}</div><div style={{fontSize:"20px",fontWeight:"800",color,letterSpacing:"-1px"}}>{value}</div>{sub&&<div style={{fontSize:"9px",color:"#777",marginTop:"2px"}}>{sub}</div>}</div>);
+
+  if (!userKey) return <SetupScreen onSave={setUserKey}/>;
+
+  const planPhase=getPhase(planDay);
+
+  function PlanTab() {
+    return (
+      <div>
+        <div style={{background:`linear-gradient(135deg,${planPhase.color}18,#0a0a0a)`,border:`1px solid ${planPhase.color}33`,borderRadius:12,padding:"14px 16px",marginBottom:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+            <div>
+              <div style={{fontSize:10,color:"#555",letterSpacing:2,textTransform:"uppercase"}}>150-Day Plan</div>
+              <div style={{fontSize:18,fontWeight:800,color:planPhase.color,marginTop:2}}>{planPhase.badge} {planPhase.name} Phase</div>
+              <div style={{fontSize:11,color:"#888",marginTop:4}}>{planPhase.focus}</div>
+            </div>
+            <div style={{textAlign:"right",flexShrink:0}}>
+              <div style={{background:"#f97316",color:"#fff",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🪔 {DAYS_TO_DIWALI}d left</div>
+              <div style={{color:"#555",fontSize:10,marginTop:4}}>{planPhase.pullUpTarget}</div>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:4,marginTop:12}}>
+            {PHASES.map(p=>{const active=planDay>=p.days[0]&&planDay<=p.days[1],done=planDay>p.days[1];return(<div key={p.id} style={{flex:1,height:4,borderRadius:100,background:done?p.color:active?p.color+"88":"#2a2a2a"}}/>);})}
+          </div>
+          <div style={{display:"flex",marginTop:4}}>
+            {PHASES.map(p=>(<div key={p.id} style={{fontSize:9,color:planDay>=p.days[0]&&planDay<=p.days[1]?p.color:"#444",textAlign:"center",flex:1}}>{p.badge} {p.name}</div>))}
+          </div>
+        </div>
+
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+          <button onClick={()=>{setPlanDay(Math.max(1,planDay-1));setSelectedWorkoutType(null);}} style={{background:"#1a1a1a",border:"1px solid #2a2a2a",color:"#fff",borderRadius:7,padding:"6px 14px",cursor:"pointer",fontSize:18,fontFamily:"inherit",fontWeight:300}}>'‹'</button>
+          <div style={{flex:1,textAlign:"center",background:"#141414",border:"1px solid #2a2a2a",borderRadius:8,padding:"8px 10px"}}>
+            <div style={{color:"#fff",fontWeight:700,fontSize:15}}>Day {planDay} of {TOTAL_PLAN_DAYS}</div>
+            <div style={{color:"#555",fontSize:10}}>{Math.max(0,TOTAL_PLAN_DAYS-planDay+1)} days remain</div>
+          </div>
+          <button onClick={()=>{setPlanDay(Math.min(TOTAL_PLAN_DAYS,planDay+1));setSelectedWorkoutType(null);}} style={{background:"#1a1a1a",border:"1px solid #2a2a2a",color:"#fff",borderRadius:7,padding:"6px 14px",cursor:"pointer",fontSize:18,fontFamily:"inherit",fontWeight:300}}>'›'</button>
+        </div>
+
+        <div style={{display:"flex",gap:6,marginBottom:14}}>
+          {[{l:"SETS",v:planPhase.gymSets},{l:"REST",v:planPhase.restBetween},{l:"PULL-UPS",v:planPhase.pullUpTarget}].map((item,i)=>(
+            <div key={i} style={{flex:1,background:"#141414",border:`1px solid ${planPhase.color}22`,borderRadius:8,padding:"7px 9px"}}>
+              <div style={{fontSize:9,color:"#555",letterSpacing:1}}>{item.l}</div>
+              <div style={{fontSize:11,color:planPhase.color,fontWeight:700,marginTop:2}}>{item.v}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{fontSize:9,color:"#666",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Select today's workout type:</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7,marginBottom:16}}>
+          {WORKOUT_TYPES.map(wt=>{
+            const active=selectedWorkoutType===wt.id;
+            return (
+              <div key={wt.id} onClick={()=>setSelectedWorkoutType(active?null:wt.id)}
+                style={{background:active?wt.color+"18":"#0d0d0d",border:`1px solid ${active?wt.color:"#2a2a2a"}`,borderRadius:9,padding:"9px 4px",cursor:"pointer",textAlign:"center",transition:"all 0.2s"}}>
+                <div style={{fontSize:18}}>{wt.icon}</div>
+                <div style={{color:active?wt.color:"#666",fontSize:9,fontWeight:active?700:400,marginTop:3}}>{wt.label}</div>
+                <div style={{color:"#444",fontSize:8}}>{wt.location}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {selectedWorkoutType ? (
+          <div>
+            <div style={{fontSize:9,color:"#777",letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Day {planDay} Recommendation</div>
+            <PlanWorkoutCard type={selectedWorkoutType} phase={planPhase}/>
+          </div>
+        ) : (
+          <div style={{textAlign:"center",padding:"24px 16px",background:"#0a0a0a",borderRadius:10,border:"1px solid #1a1a1a"}}>
+            <div style={{fontSize:28,marginBottom:8}}>☝</div>
+            <div style={{fontSize:12,color:"#555"}}>Select a workout type above for your Day {planDay} recommendation</div>
+          </div>
+        )}
+
+        <div style={{marginTop:20}}>
+          <div style={{fontSize:9,color:"#555",letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>WEEKLY STRUCTURE</div>
+          {[
+            {day:"Mon",icon:"🏋",w:"Gym -- Upper Body + Pull-ups",c:"#e8ff47"},
+            {day:"Tue",icon:"🥷",w:"Shadow Boxing (Home)",c:"#a78bfa"},
+            {day:"Wed",icon:"🧘",w:"Yoga and Stretch (Home)",c:"#34d399"},
+            {day:"Thu",icon:"🏋",w:"Gym -- Push + Pull-ups",c:"#e8ff47"},
+            {day:"Fri",icon:"🥊",w:"Punch Bag (Gym) or Shadow (Home)",c:"#f87171"},
+            {day:"Sat",icon:"🏠",w:"Home Workout (family-dependent)",c:"#47d4ff"},
+            {day:"Sun",icon:"🌿",w:"Rest + Active Recovery",c:"#94a3b8"},
+          ].map((d,i)=>(
+            <div key={i} style={{display:"flex",gap:10,padding:"6px 9px",background:"#0d0d0d",borderRadius:7,marginBottom:5,borderLeft:`3px solid ${d.c}33`}}>
+              <span style={{color:d.c,fontWeight:700,minWidth:26,fontSize:12}}>{d.day}</span>
+              <span style={{fontSize:13}}>{d.icon}</span>
+              <span style={{color:"#888",fontSize:11}}>{d.w}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{marginTop:16}}>
+          <div style={{fontSize:9,color:"#555",letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>NON-NEGOTIABLE RULES</div>
+          {["Never miss a Monday gym session","Stretch on every rest day","Log before sleeping","Pull-ups every single gym visit","One clean slip is not a bad day. Reset.","Rate energy before every workout"].map((r,i)=>(
+            <div key={i} style={{display:"flex",gap:8,marginBottom:6}}>
+              <span style={{color:planPhase.color,fontWeight:700,fontSize:11}}>{i+1}.</span>
+              <span style={{color:"#888",fontSize:11}}>{r}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{minHeight:"100vh",background:"#0e0e0e",color:"#fff",fontFamily:"'DM Mono','Courier New',monospace",paddingBottom:"env(safe-area-inset-bottom)"}}>
+      <div style={{background:"#0e0e0e",borderBottom:"1px solid #1c1c1c",padding:"16px 16px 10px",position:"sticky",top:0,zIndex:100,paddingTop:"calc(16px + env(safe-area-inset-top))"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"10px"}}>
+          <div>
+            <div style={{fontSize:"9px",letterSpacing:"4px",color:"#bbbbbb"}}>DAILY PERFORMANCE SYSTEM</div>
+            <div style={{fontSize:"20px",fontWeight:"800",color:"#e8ff47",letterSpacing:"-1px"}}>FORGE PROTOCOL</div>
+          </div>
+          <div style={{textAlign:"right",display:"flex",flexDirection:"column",alignItems:"flex-end",gap:"2px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:"6px"}}>
+              {syncStatus==="saved"&&<span style={{fontSize:"8px",color:"#a8ff87"}}>synced</span>}
+              {syncStatus==="error"&&<span style={{fontSize:"8px",color:"#ff4747"}}>sync error</span>}
+              {syncing&&<span style={{fontSize:"8px",color:"#888"}}>syncing</span>}
+              <div style={{fontSize:"8px",color:"#555"}}>key: {userKey}</div>
+            </div>
+            <div style={{display:"flex",alignItems:"baseline",gap:"4px"}}>
+              <div style={{fontSize:"8px",color:"#cccccc",letterSpacing:"2px"}}>WEEK</div>
+              <div style={{fontSize:"26px",fontWeight:"800",color:SC(ws),letterSpacing:"-2px",lineHeight:1}}>{ws}%</div>
+            </div>
+          </div>
+        </div>
+        <div style={{background:"#0f0a00",border:"1px solid #ff780430",borderRadius:"6px",padding:"7px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}}>
+          <div>
+            <div style={{fontSize:"8px",color:"#ff7847",letterSpacing:"2px"}}>🪔 DIWALI PULL-UP GOAL</div>
+            <div style={{fontSize:"11px",color:"#ddd",marginTop:"2px"}}>20 non-stop pull-ups · Nov 8 2026 · Day {CURRENT_PLAN_DAY}/150</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:"20px",fontWeight:"800",color:"#ff7847",letterSpacing:"-1px"}}>{DAYS_TO_DIWALI}</div>
+            <div style={{fontSize:"8px",color:"#bb9977",letterSpacing:"1px"}}>DAYS LEFT</div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:"4px",flexWrap:"wrap"}}>
+          {["today","week","pullups","progress","logs","plan","habits"].map(t=>(
+            <button key={t} onClick={()=>setTab(t)} style={S(t)}>{t==="plan"?"150-day":t}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{padding:"16px",maxWidth:"560px",margin:"0 auto"}}>
+
+        {tab==="today" && (
+          <div>
+            {CARD(<>
+              <div style={{fontSize:"9px",color:"#dddddd",letterSpacing:"3px",marginBottom:"6px"}}>{new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"}).toUpperCase()}</div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                <div>
+                  <div style={{fontSize:"16px",fontWeight:"700",color:todayCfg.color}}>{todayFull}</div>
+                  <div style={{fontSize:"11px",color:"#cccccc",marginTop:"3px"}}>{todayCfg.windows.join(" or ")}</div>
+                  <div style={{fontSize:"10px",color:"#cccccc",marginTop:"6px",lineHeight:1.5}}>{todayCfg.note}</div>
+                </div>
+                <div style={{textAlign:"right",flexShrink:0,marginLeft:"10px"}}>
+                  <div style={{fontSize:"26px",fontWeight:"800",color:SC(ts.pct)}}>{ts.pct}%</div>
+                  <div style={{fontSize:"9px",color:"#cccccc"}}>{ts.done}/{ts.total}</div>
+                </div>
+              </div>
+            </>,{borderLeft:`3px solid ${todayCfg.color}`})}
+
+            {LBL("DID YOU MAKE IT TO THE GYM TODAY?")}
+            <div style={{display:"flex",gap:"6px",marginBottom:"14px"}}>
+              {[{val:"gym",label:"💪 Gym",color:"#e8ff47"},{val:"home",label:"🏠 Home",color:"#47d4ff"},{val:"rest",label:"❌ No workout",color:"#ff4747"}].map(opt=>(
+                <div key={opt.val} onClick={()=>setGymStatus(todayFull,opt.val)} style={{flex:1,padding:"10px 6px",borderRadius:"8px",cursor:"pointer",textAlign:"center",border:`1px solid ${todayData.gym_status===opt.val?opt.color:"#2a2a2a"}`,background:todayData.gym_status===opt.val?opt.color+"18":"#0d0d0d",fontSize:"10px",fontWeight:"600",color:todayData.gym_status===opt.val?opt.color:"#999",transition:"all 0.2s"}}>{opt.label}</div>
+              ))}
+            </div>
+
+            {todayData.gym_status&&todayData.gym_status!=="rest"&&(()=>{
+              const isgym=todayData.gym_status==="gym";
+              const focus=isgym?todayCfg.gymFocus:todayCfg.homeFocus;
+              const moves=isgym?GYM_WORKOUTS[focus]:HOME_WORKOUTS[focus];
+              return moves?(<>
+                {LBL(`${isgym?"GYM":"HOME"} WORKOUT -- ${focus.toUpperCase()}`)}
+                {CARD(<>{moves.map((m,i)=>(
+                  <div key={i} style={{display:"flex",gap:"10px",alignItems:"flex-start",padding:"7px 0",borderBottom:i<moves.length-1?"1px solid #222":"none"}}>
+                    <span style={{color:"#888",fontSize:"9px",paddingTop:"2px",flexShrink:0}}>{String(i+1).padStart(2,"0")}</span>
+                    <div><span style={{fontSize:"12px",color:"#ccc"}}>{m.name}</span><span style={{fontSize:"10px",color:isgym?"#e8ff47":"#47d4ff",marginLeft:"8px"}}>{m.reps}</span><div style={{fontSize:"10px",color:"#aaa",marginTop:"1px"}}>{m.note}</div></div>
+                  </div>
+                ))}</>)}
+                <div style={{background:"#0a0f0a",border:"1px solid #4ade8022",borderRadius:8,padding:"9px 12px",marginBottom:12,display:"flex",gap:10,alignItems:"center"}}>
+                  <span>💡</span>
+                  <div style={{fontSize:11,color:"#6ee7b7"}}>Full plan for Day {CURRENT_PLAN_DAY}: <span onClick={()=>setTab("plan")} style={{color:"#4ade80",textDecoration:"underline",cursor:"pointer"}}>150-day tab</span></div>
+                </div>
+              </>):null;
+            })()}
+
+            {todayData.gym_status==="rest"&&(<>
+              <div style={{background:"#ff474710",border:"1px solid #ff474730",borderLeft:"3px solid #ff4747",borderRadius:"8px",padding:"12px 16px",marginBottom:"10px"}}>
+                <div style={{fontSize:"12px",color:"#ff7a7a",fontWeight:"600",marginBottom:"3px"}}>Rest day logged</div>
+                <div style={{fontSize:"11px",color:"#cc7777"}}>No workout today. Habits still count.</div>
+              </div>
+              <div style={{background:"#0a0a14",border:"1px solid #94a3b833",borderRadius:8,padding:"10px 12px",marginBottom:12}}>
+                <div style={{fontSize:11,color:"#94a3b8",fontWeight:700,marginBottom:4}}>🌿 Rest day recovery plan:</div>
+                <span style={{fontSize:11,color:"#555"}}>See options in the <span onClick={()=>{setTab("plan");setSelectedWorkoutType("rest");}} style={{color:"#94a3b8",textDecoration:"underline",cursor:"pointer"}}>150-day tab</span></span>
+              </div>
+            </>)}
+
+            {todayData.gym_status&&todayData.gym_status!=="rest"&&(<>
+              {LBL("MARK COMPLETE")}
+              <div onClick={()=>toggle(todayFull,"workout_done")} style={{background:todayData.workout_done?"#e8ff4710":"#0d0d0d",border:`1px solid ${todayData.workout_done?"#e8ff47":"#2a2a2a"}`,borderRadius:"8px",padding:"13px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:"12px",marginBottom:"12px"}}>
+                {CB(todayData.workout_done,"#e8ff47")}<span style={{fontSize:"12px",color:todayData.workout_done?"#e8ff47":"#cccccc"}}>Workout done ✓</span>
+              </div>
+            </>)}
+
+            {LBL("DAILY HABITS")}
+            {HABITS.map(h=>(
+              <div key={h.id} onClick={()=>toggle(todayFull,h.id)} style={{background:todayData[h.id]?"#a8ff8710":"#0d0d0d",border:`1px solid ${todayData[h.id]?"#a8ff8760":"#2a2a2a"}`,borderRadius:"7px",padding:"10px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:"10px",marginBottom:"7px"}}>
+                {CB(todayData[h.id])}<span style={{fontSize:"14px"}}>{h.icon}</span><span style={{fontSize:"12px",color:todayData[h.id]?"#a8ff87":"#cccccc"}}>{h.title}</span>
+              </div>
+            ))}
+
+            {LBL("TODAY'S NOTE")}
+            <div style={{background:"#0d0d0d",border:"1px solid #2a2a2a",borderRadius:"8px",padding:"12px 14px",marginBottom:"8px"}}>
+              <textarea placeholder="How did today go? Energy levels, what felt hard, what clicked..." value={todayData.note||""} onChange={e=>setWeekData(prev=>{const d=prev[todayFull]||{};return {...prev,[todayFull]:{...d,note:e.target.value}};})} style={{width:"100%",minHeight:"90px",background:"transparent",border:"none",outline:"none",resize:"vertical",color:"#fff",fontSize:"13px",lineHeight:"1.6",fontFamily:"inherit",boxSizing:"border-box"}}/>
+              {todayData.note&&<div style={{fontSize:"9px",color:"#555",marginTop:"6px",borderTop:"1px solid #1a1a1a",paddingTop:"6px"}}>{todayData.note.length} chars · synced</div>}
+            </div>
+          </div>
+        )}
+
+        {tab==="plan" && <PlanTab/>}
+
+        {tab==="week" && (
+          <div>
+            {(()=>{const ids=[...new Set([weekId,...allWeeks.map(r=>r.week_id)])].sort().reverse();return ids.length>1&&(<div style={{display:"flex",gap:"6px",overflowX:"auto",marginBottom:"14px",paddingBottom:"4px"}}>{ids.map(wid=>{const d=new Date(wid),label=wid===weekId?"This week":`${d.toLocaleString("default",{month:"short"})} ${d.getDate()}`,isSel=wid===selWeekId;return(<div key={wid} onClick={()=>setSelWeekId(wid)} style={{flexShrink:0,padding:"6px 12px",borderRadius:"6px",cursor:"pointer",fontSize:"10px",fontWeight:isSel?"700":"400",border:`1px solid ${isSel?"#e8ff47":"#2a2a2a"}`,background:isSel?"#e8ff4715":"#0a0a0a",color:isSel?"#e8ff47":"#777"}}>{label}</div>);})}</div>);})()}
+            {LBL(`${selWeekId===weekId?"THIS WEEK":"WEEK OF "+selWeekId}`)}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"5px",marginBottom:"18px"}}>
+              {DAYS.map((d,i)=>{const f=FULL_DAYS[i],dd=selWeekData[f]||{},total=HABITS.length+1,done=[dd.workout_done,...HABITS.map(h=>dd[h.id])].filter(Boolean).length,pct=total?Math.round((done/total)*100):0,isToday=i===todayIdx&&selWeekId===weekId,isSel=i===selDay,cfg=DAY_CONFIG[f];return(<div key={d} onClick={()=>setSelDay(i)} style={{background:isSel?"#242424":"#0a0a0a",border:`1px solid ${isSel?cfg.color:isToday?"#444":"#242424"}`,borderRadius:"8px",padding:"8px 4px",cursor:"pointer",textAlign:"center"}}><div style={{fontSize:"8px",color:isToday?"#e8ff47":"#999",letterSpacing:"1px",marginBottom:"4px"}}>{d}{isToday?"●":""}</div><div style={{fontSize:"11px",marginBottom:"4px"}}>{cfg.gymFocus?.includes("Boxing")?"🥊":cfg.gymFocus?.includes("Lower")?"🦵":cfg.gymFocus?"💪":"🌿"}</div><div style={{fontSize:"12px",fontWeight:"700",color:SC(pct)}}>{done>0?`${pct}%`:"--"}</div></div>);})}
+            </div>
+            {CARD(<>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"8px"}}>
+                <div><div style={{fontSize:"15px",fontWeight:"700",color:selCfg.color}}>{selFull}</div><div style={{fontSize:"10px",color:"#999",marginTop:"2px"}}>{selCfg.windows.join(" · ")}</div></div>
+                {(()=>{const total=HABITS.length+1,done=[selData.workout_done,...HABITS.map(h=>selData[h.id])].filter(Boolean).length,pct=total?Math.round((done/total)*100):0;return <div style={{fontSize:"22px",fontWeight:"800",color:SC(pct)}}>{done>0?`${pct}%`:"--"}</div>;})()}
+              </div>
+              <div style={{fontSize:"10px",color:"#aaa",marginBottom:"12px"}}>{selCfg.note}</div>
+              <div style={{display:"flex",gap:"6px",marginBottom:"12px"}}>
+                {[{val:"gym",label:"💪 Gym",color:"#e8ff47"},{val:"home",label:"🏠 Home",color:"#47d4ff"},{val:"rest",label:"❌ Rest",color:"#ff4747"}].map(opt=>{
+                  const handleClick = () => {
+                    if(isCurrentWeek){ setGymStatus(selFull,opt.val); }
+                    else {
+                      const d=selWeekData[selFull]||{};
+                      const upd={...selWeekData,[selFull]:{...d,gym_status:opt.val}};
+                      sbUpsert("forge_logs",{key:userKey,week_id:selWeekId,data:upd,updated_at:new Date().toISOString()}).then(()=>setAllWeeks(allWeeks.map(r=>r.week_id===selWeekId?{...r,data:upd}:r)));
+                    }
+                  };
+                  const active = selData.gym_status===opt.val;
+                  return (
+                    <div key={opt.val} onClick={handleClick}
+                      style={{flex:1,padding:"8px",borderRadius:"6px",cursor:"pointer",textAlign:"center",
+                        border:"1px solid "+(active?opt.color:"#2a2a2a"),
+                        background:active?opt.color+"15":"#0a0a0a",
+                        fontSize:"10px",color:active?opt.color:"#777"}}>
+                      {opt.label}
+                    </div>
+                  );
+                })}
+              </div>
+              {selData.gym_status&&selData.gym_status!=="rest"&&(()=>{const isgym=selData.gym_status==="gym";const moves=(isgym?GYM_WORKOUTS[selCfg.gymFocus]:HOME_WORKOUTS[selCfg.homeFocus])||[];return moves.map((m,i)=>(<div key={i} style={{display:"flex",gap:"8px",padding:"5px 0",borderBottom:i<moves.length-1?"1px solid #222":"none"}}><span style={{color:"#555",fontSize:"9px",flexShrink:0}}>{String(i+1).padStart(2,"0")}</span><div><span style={{fontSize:"11px",color:"#aaa"}}>{m.name}</span><span style={{fontSize:"10px",color:"#e8ff47",marginLeft:"6px"}}>{m.reps}</span></div></div>));})()}
+            </>,{borderLeft:`3px solid ${selCfg.color}`})}
+            {LBL(`LOG FOR ${selFull.toUpperCase()}`)}
+            {!isCurrentWeek&&<div style={{background:"#e8ff4710",border:"1px solid #e8ff4730",borderRadius:"6px",padding:"8px 12px",marginBottom:"10px",fontSize:"10px",color:"#e8ff47"}}>📅 Past week -- you can still edit</div>}
+            {selData.gym_status!=="rest"&&(()=>{
+              const handleWorkoutDone = () => {
+                if(isCurrentWeek){ toggle(selFull,"workout_done"); }
+                else {
+                  const d=selWeekData[selFull]||{};
+                  const upd={...selWeekData,[selFull]:{...d,workout_done:!d.workout_done}};
+                  sbUpsert("forge_logs",{key:userKey,week_id:selWeekId,data:upd,updated_at:new Date().toISOString()}).then(()=>setAllWeeks(allWeeks.map(r=>r.week_id===selWeekId?{...r,data:upd}:r)));
+                }
+              };
+              return (
+                <div onClick={handleWorkoutDone}
+                  style={{background:selData.workout_done?"#e8ff4710":"#0a0a0a",border:"1px solid "+(selData.workout_done?"#e8ff47":"#2a2a2a"),borderRadius:"7px",padding:"10px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:"10px",marginBottom:"7px"}}>
+                  {CB(selData.workout_done,"#e8ff47")}<span style={{fontSize:"12px",color:selData.workout_done?"#e8ff47":"#999"}}>Workout completed</span>
+                </div>
+              );
+            })()}
+            {HABITS.map(h=>{
+              const handleHabit = () => {
+                if(isCurrentWeek){ toggle(selFull,h.id); }
+                else {
+                  const d=selWeekData[selFull]||{};
+                  const upd={...selWeekData,[selFull]:{...d,[h.id]:!d[h.id]}};
+                  sbUpsert("forge_logs",{key:userKey,week_id:selWeekId,data:upd,updated_at:new Date().toISOString()}).then(()=>setAllWeeks(allWeeks.map(r=>r.week_id===selWeekId?{...r,data:upd}:r)));
+                }
+              };
+              return (
+                <div key={h.id} onClick={handleHabit}
+                  style={{background:selData[h.id]?"#a8ff8708":"#0a0a0a",border:"1px solid "+(selData[h.id]?"#a8ff8755":"#242424"),borderRadius:"6px",padding:"9px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:"10px",marginBottom:"6px"}}>
+                  {CB(selData[h.id])}<span style={{fontSize:"12px"}}>{h.icon}</span><span style={{fontSize:"11px",color:selData[h.id]?"#a8ff87":"#999"}}>{h.title}</span>
+                </div>
+              );
+            })}
+            {LBL("NOTE")}
+            <div style={{background:"#0d0d0d",border:"1px solid #2a2a2a",borderRadius:"8px",padding:"12px 14px",marginBottom:"8px"}}>
+              <textarea
+                placeholder="How did this day go?"
+                value={selData.note||""}
+                style={{width:"100%",minHeight:"80px",background:"transparent",border:"none",outline:"none",resize:"vertical",color:"#fff",fontSize:"13px",lineHeight:"1.6",fontFamily:"inherit",boxSizing:"border-box"}}
+                onChange={e=>{
+                  const note=e.target.value;
+                  if(isCurrentWeek){
+                    setWeekData(prev=>{const d=prev[selFull]||{};return{...prev,[selFull]:{...d,note}};});
+                  } else {
+                    const upd={...selWeekData,[selFull]:{...selWeekData[selFull]||{},note}};
+                    sbUpsert("forge_logs",{key:userKey,week_id:selWeekId,data:upd,updated_at:new Date().toISOString()}).then(()=>setAllWeeks(allWeeks.map(r=>r.week_id===selWeekId?{...r,data:upd}:r)));
+                  }
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {tab==="pullups" && (
+          <div>
+            <div style={{background:"linear-gradient(135deg,#100800,#1a0d00)",border:"1px solid #ff780430",borderRadius:"12px",padding:"20px 18px",marginBottom:"16px",textAlign:"center"}}>
+              <div style={{fontSize:"9px",color:"#ff7847",letterSpacing:"3px",marginBottom:"6px"}}>🪔 DIWALI GOAL</div>
+              <div style={{fontSize:"42px",fontWeight:"800",color:"#fff",letterSpacing:"-3px",lineHeight:1}}>{DAYS_TO_DIWALI}</div>
+              <div style={{fontSize:"11px",color:"#775533",marginTop:"2px"}}>days until November 8, 2026</div>
+              <div style={{fontSize:"14px",color:"#ff7847",fontWeight:"700",marginTop:"10px"}}>TARGET: 20 non-stop pull-ups</div>
+              <div style={{marginTop:"16px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:"10px",color:"#553322",marginBottom:"5px"}}><span>0</span><span style={{color:bestPullup>0?"#ff7847":"#553322"}}>Best: {bestPullup} reps</span><span>20</span></div>
+                <div style={{background:"#1a0a00",borderRadius:"100px",height:"8px",overflow:"hidden"}}><div style={{height:"100%",borderRadius:"100px",background:"linear-gradient(90deg,#ff7847,#ffcc00)",width:`${pullupPct}%`,transition:"width 0.5s"}}/></div>
+                <div style={{fontSize:"10px",color:"#ff784799",marginTop:"4px"}}>{pullupPct}% to goal · {PHASE.label} · Day {CURRENT_PLAN_DAY}/150</div>
+              </div>
+            </div>
+            {CARD(<><div style={{fontSize:"9px",color:PHASE.color,letterSpacing:"2px",marginBottom:"6px"}}>{WEEKS_TO_DIWALI} WEEKS OUT</div><div style={{fontSize:"16px",fontWeight:"700",color:PHASE.color,marginBottom:"4px"}}>{PHASE.label}</div><div style={{fontSize:"11px",color:"#999"}}>{PHASE.desc}</div><div style={{fontSize:"11px",color:"#aaa",marginTop:"6px"}}>Target: <span style={{color:PHASE.color,fontWeight:"700"}}>{PHASE.target} reps</span></div></>,{borderLeft:`3px solid ${PHASE.color}`})}
+            {LBL("LOG A GYM SET")}
+            <div style={{background:"#141414",border:"1px solid #2a2a2a",borderRadius:"8px",padding:"14px 16px",marginBottom:"14px"}}>
+              <div style={{fontSize:"11px",color:"#aaa",marginBottom:"10px"}}>Best set this session:</div>
+              <div style={{display:"flex",gap:"8px"}}>
+                <input type="number" value={pullupInput} onChange={e=>setPullupInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&logPullup()} placeholder="e.g. 7" style={{flex:1,background:"#0e0e0e",border:"1px solid #333",color:"#e8ff47",fontSize:"20px",fontWeight:"700",padding:"8px 12px",borderRadius:"6px",outline:"none",fontFamily:"inherit"}}/>
+                <button onClick={logPullup} style={{background:"#e8ff47",color:"#080808",border:"none",borderRadius:"6px",padding:"8px 20px",fontSize:"11px",fontWeight:"800",fontFamily:"inherit",cursor:"pointer"}}>LOG</button>
+              </div>
+            </div>
+            {pullupLogs.length>0&&(<>{LBL(`ALL LOGS -- ${pullupLogs.length}`)}{CARD(<>{[...pullupLogs].reverse().slice(0,20).map((log,i)=>{const pct=Math.min(100,Math.round((log.reps/20)*100)),isMax=log.reps===bestPullup;return(<div key={i} style={{display:"flex",alignItems:"center",gap:"10px",padding:"6px 0",borderBottom:i<Math.min(19,pullupLogs.length-1)?"1px solid #222":"none"}}><div style={{width:"54px",fontSize:"10px",color:"#999"}}>{log.date}</div><div style={{flex:1,background:"#0e0e0e",borderRadius:"100px",height:"5px",overflow:"hidden"}}><div style={{height:"100%",borderRadius:"100px",background:isMax?"#ff7847":"#e8ff4755",width:`${pct}%`}}/></div><div style={{width:"32px",fontSize:"13px",fontWeight:"700",color:isMax?"#ff7847":"#ccc",textAlign:"right"}}>{log.reps}{isMax&&<span style={{fontSize:"8px"}}> ★</span>}</div></div>);})})</>)}</>)}
+            {LBL("ROADMAP TO DIWALI")}
+            {PULL_UP_PHASES.map((p,i)=>(<div key={i} style={{background:"#0a0a0a",border:`1px solid ${p.color}20`,borderLeft:`3px solid ${p.color}`,borderRadius:"8px",padding:"12px 14px",marginBottom:"8px"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"4px"}}><div style={{fontSize:"10px",color:p.color,fontWeight:"700"}}>{p.label} · {p.week}</div><div style={{fontSize:"11px",fontWeight:"700",color:p.color}}>{p.target}</div></div><div style={{fontSize:"10px",color:"#777",lineHeight:1.5}}>{p.detail}</div></div>))}
+          </div>
+        )}
+
+        {tab==="progress" && (()=>{
+          if(!history.length) return(<div style={{textAlign:"center",padding:"40px 20px"}}><div style={{fontSize:"32px",marginBottom:"12px"}}>📊</div><div style={{fontSize:"14px",color:"#e8ff47",fontWeight:"700",marginBottom:"8px"}}>No history yet</div><div style={{fontSize:"12px",color:"#777",lineHeight:1.6}}>Start logging in the Today tab.</div></div>);
+          const weekScores=history.map(w=>w.score),weekLabels=history.map(w=>{const d=w.weekStart;return `${d.toLocaleString("default",{month:"short"})} ${d.getDate()}`;});
+          const avgScore=Math.round(weekScores.reduce((a,b)=>a+b,0)/weekScores.length),bestScore=Math.max(...weekScores),trend=weekScores.length>=2?weekScores[weekScores.length-1]-weekScores[weekScores.length-2]:0;
+          const totalGym=history.reduce((a,w)=>a+w.gymDays,0),totalHome=history.reduce((a,w)=>a+w.homeDays,0),totalRest=history.reduce((a,w)=>a+w.restDays,0);
+          const puByWeek={};
+          pullupLogs.forEach(l=>{const d=new Date(l.ts),day=d.getDay(),diff=d.getDate()-day+(day===0?-6:1),mon=new Date(new Date(d).setDate(diff)),wk=mon.toISOString().split("T")[0];if(!puByWeek[wk])puByWeek[wk]=[];puByWeek[wk].push(l.reps);});
+          const puKeys=Object.keys(puByWeek).sort(),puBests=puKeys.map(k=>Math.max(...puByWeek[k])),puLabels=puKeys.map(k=>{const d=new Date(k);return `${d.toLocaleString("default",{month:"short"})} ${d.getDate()}`;});
+          const habitTotals={};
+          HABITS_IDS.forEach(h=>{const possible=history.length*7,done=history.reduce((a,w)=>a+(w.habitBreakdown[h]||0),0);habitTotals[h]={possible,done,pct:possible?Math.round((done/possible)*100):0};});
+          const SUB=(v,label)=>(<button onClick={()=>setProgView(v)} style={{background:progView===v?"#e8ff47":"transparent",color:progView===v?"#080808":"#777",border:`1px solid ${progView===v?"#e8ff47":"#2a2a2a"}`,padding:"5px 12px",borderRadius:"4px",fontSize:"9px",letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer",fontFamily:"inherit",fontWeight:progView===v?"800":"400"}}>{label}</button>);
+          return (<div>
+            <div style={{display:"flex",gap:"6px",flexWrap:"wrap",marginBottom:"16px"}}>{SUB("overview","Overview")}{SUB("pullups","Pull-ups")}{SUB("habits","Habits")}{SUB("attendance","Gym/Home")}</div>
+            {progView==="overview"&&(<><div style={{display:"flex",gap:"8px",marginBottom:"14px"}}>{STAT("AVG WEEK",`${avgScore}%`,`Best: ${bestScore}%`,SC(avgScore))}{STAT("WORKOUTS",history.reduce((a,w)=>a+w.workoutDays,0),`${totalGym}g·${totalHome}h`,"#47d4ff")}{STAT("TREND",trend>=0?`+${trend}%`:`${trend}%`,"vs last week",trend>=0?"#a8ff87":"#ff7847")}</div>
+              {CARD(<><Sparkline data={weekScores} color="#e8ff47" height={64}/><div style={{display:"flex",justifyContent:"space-between",marginTop:"6px"}}>{weekLabels.map((l,i)=><div key={i} style={{fontSize:"8px",color:"#777",textAlign:"center",flex:1}}>{l}</div>)}</div><div style={{display:"flex",justifyContent:"space-between",marginTop:"8px",borderTop:"1px solid #2a2a2a",paddingTop:"8px"}}>{weekScores.map((s,i)=><div key={i} style={{flex:1,textAlign:"center"}}><div style={{fontSize:"11px",fontWeight:"700",color:SC(s)}}>{s}%</div></div>)}</div></>)}
+              {history.map((w,i)=>(<div key={i} style={{display:"flex",alignItems:"center",gap:"10px",padding:"10px 14px",marginBottom:"6px",background:"#141414",borderRadius:"7px",borderLeft:`3px solid ${SC(w.score)}`}}><div style={{width:"60px",fontSize:"10px",color:"#999"}}>{weekLabels[i]}</div><div style={{flex:1,background:"#0e0e0e",borderRadius:"100px",height:"6px",overflow:"hidden"}}><div style={{height:"100%",width:`${w.score}%`,background:SC(w.score),borderRadius:"100px"}}/></div><div style={{width:"36px",fontSize:"12px",fontWeight:"700",color:SC(w.score),textAlign:"right"}}>{w.score}%</div><div style={{width:"64px",fontSize:"9px",color:"#777",textAlign:"right"}}>{w.gymDays}g·{w.homeDays}h·{w.workoutDays}✓</div></div>))}</>)}
+            {progView==="pullups"&&(<><div style={{display:"flex",gap:"8px",marginBottom:"14px"}}>{STAT("BEST",`${bestPullup}`,"reps","#ff7847")}{STAT("LAST",`${lastPullup||"--"}`,"recent","#e8ff47")}{STAT("TO GO",`${Math.max(0,20-bestPullup)}`,"reps","#a8ff87")}</div>
+              {puBests.length>=2&&CARD(<><Sparkline data={puBests} color="#ff7847" height={64}/><div style={{display:"flex",justifyContent:"space-between",marginTop:"4px"}}>{puLabels.map((l,i)=><div key={i} style={{fontSize:"8px",color:"#777",textAlign:"center",flex:1}}>{l}</div>)}</div></>)}
+              {pullupLogs.length>0&&CARD(<>{[...pullupLogs].reverse().map((log,i)=>{const pct=Math.min(100,Math.round((log.reps/20)*100)),isMax=log.reps===bestPullup;return(<div key={i} style={{display:"flex",alignItems:"center",gap:"10px",padding:"6px 0",borderBottom:i<pullupLogs.length-1?"1px solid #222":"none"}}><div style={{width:"54px",fontSize:"10px",color:"#888"}}>{log.date}</div><div style={{flex:1,background:"#0e0e0e",borderRadius:"100px",height:"5px",overflow:"hidden"}}><div style={{height:"100%",borderRadius:"100px",background:isMax?"#ff7847":"#e8ff4755",width:`${pct}%`}}/></div><div style={{width:"32px",fontSize:"13px",fontWeight:"700",color:isMax?"#ff7847":"#ccc",textAlign:"right"}}>{log.reps}{isMax&&<span style={{fontSize:"8px"}}> ★</span>}</div></div>);})}</>)}</>)}
+            {progView==="habits"&&(<>{HABITS_IDS.map(h=>{const ht=habitTotals[h];return(<div key={h} style={{background:"#141414",borderRadius:"8px",padding:"12px 14px",marginBottom:"8px",border:"1px solid #2a2a2a"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"8px"}}><div style={{fontSize:"12px",color:"#ddd",fontWeight:"600"}}>{HABITS.find(x=>x.id===h)?.icon} {HABIT_LABELS[h]}</div><div style={{fontSize:"13px",fontWeight:"700",color:SC(ht.pct)}}>{ht.pct}%</div></div><div style={{background:"#0e0e0e",borderRadius:"100px",height:"6px",overflow:"hidden"}}><div style={{height:"100%",width:`${ht.pct}%`,background:SC(ht.pct),borderRadius:"100px",transition:"width 0.4s"}}/></div><div style={{fontSize:"9px",color:"#555",marginTop:"4px"}}>{ht.done} of {ht.possible} days</div></div>);})}</>)}
+            {progView==="attendance"&&(<><div style={{display:"flex",gap:"8px",marginBottom:"14px"}}>{STAT("GYM",totalGym,"days","#e8ff47")}{STAT("HOME",totalHome,"days","#47d4ff")}{STAT("REST",totalRest,"days","#ff4747")}</div>
+              {CARD(<>{FULL_DAYS.map(day=>{const gymCnt=history.filter(w=>(w.raw[day]||{}).gym_status==="gym").length,homeCnt=history.filter(w=>(w.raw[day]||{}).gym_status==="home").length,total=history.length;if(gymCnt+homeCnt===0)return null;const gymPct=total?Math.round((gymCnt/total)*100):0,homePct=total?Math.round((homeCnt/total)*100):0;return(<div key={day} style={{padding:"8px 0",borderBottom:"1px solid #222"}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:"5px"}}><div style={{fontSize:"11px",color:"#ddd",fontWeight:"600"}}>{day}</div><div style={{fontSize:"10px",color:"#777"}}><span style={{color:"#e8ff47"}}>{gymCnt}x gym</span> · <span style={{color:"#47d4ff"}}>{homeCnt}x home</span></div></div><div style={{display:"flex",gap:"2px",height:"6px"}}>{gymPct>0&&<div style={{width:`${gymPct}%`,background:"#e8ff47",borderRadius:"100px 0 0 100px"}}/>}{homePct>0&&<div style={{width:`${homePct}%`,background:"#47d4ff",borderRadius:gymPct>0?"0 100px 100px 0":"100px"}}/>}</div></div>);})})</>)}</>)}
+          </div>);
+        })()}
+
+        {tab==="logs" && (
+          <div>
+            {LBL("ALL SESSION LOGS")}
+            {allWeeks.length===0?(<div style={{textAlign:"center",padding:"40px 20px",color:"#555"}}><div style={{fontSize:"24px",marginBottom:"8px"}}>📋</div><div>No logs yet.</div></div>):[...allWeeks].sort((a,b)=>new Date(b.week_id)-new Date(a.week_id)).map((row,wi)=>{
+              const isOpen=expandedLog===wi,data=row.data||{},wd=new Date(row.week_id),weekLabel=`${wd.toLocaleString("default",{month:"short"})} ${wd.getDate()}`;
+              let totalChecks=0,doneChecks=0;
+              FULL_DAYS.forEach(day=>{const d=data[day]||{};totalChecks+=HABITS_IDS.length+1;doneChecks+=HABITS_IDS.filter(h=>d[h]).length+(d.workout_done?1:0);});
+              const score=totalChecks?Math.round((doneChecks/totalChecks)*100):0;
+              return(<div key={wi} style={{background:"#141414",border:"1px solid #2a2a2a",borderRadius:"10px",marginBottom:"10px",overflow:"hidden"}}>
+                <div onClick={()=>setExpandedLog(isOpen?null:wi)} style={{padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+                  <div><div style={{fontSize:"12px",color:"#fff",fontWeight:"700"}}>Week of {weekLabel}</div><div style={{fontSize:"10px",color:"#666",marginTop:"2px"}}>{FULL_DAYS.filter(f=>(data[f]||{}).workout_done).length} workouts</div></div>
+                  <div style={{display:"flex",alignItems:"center",gap:"10px"}}><div style={{fontSize:"16px",fontWeight:"800",color:SC(score)}}>{score}%</div><span style={{color:"#555"}}>{isOpen?"▲":"▼"}</span></div>
+                </div>
+                {isOpen&&(<div style={{padding:"0 16px 16px"}}>{FULL_DAYS.map(day=>{const d=data[day]||{},habDone=HABITS_IDS.filter(h=>d[h]).length;if(!d.gym_status&&!d.workout_done&&!d.note&&habDone===0)return null;return(<div key={day} style={{padding:"10px 12px",background:"#0d0d0d",borderRadius:"7px",marginBottom:"6px",borderLeft:`3px solid ${d.workout_done?"#a8ff87":d.gym_status==="rest"?"#ff4747":"#333"}`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"4px"}}><div style={{fontSize:"11px",color:"#ccc",fontWeight:"600"}}>{day}</div><div style={{display:"flex",gap:"6px",alignItems:"center"}}>{d.gym_status&&<span style={{fontSize:"9px",color:d.gym_status==="gym"?"#e8ff47":d.gym_status==="home"?"#47d4ff":"#ff4747",padding:"2px 6px",borderRadius:"3px"}}>{d.gym_status}</span>}{d.workout_done&&<span style={{fontSize:"9px",color:"#a8ff87"}}>✓</span>}<span style={{fontSize:"9px",color:"#555"}}>{habDone}/{HABITS_IDS.length}</span></div></div>{d.note&&<div style={{fontSize:"11px",color:"#888",fontStyle:"italic",marginTop:"4px"}}>"{d.note}"</div>}</div>);})}</div>)}
+              </div>);
+            })}
+          </div>
+        )}
+
+        {tab==="habits" && (
+          <div>
+            {LBL("YOUR DAILY PROTOCOL")}
+            {HABITS.map(h=>{const isOpen=expandedHabit===h.id;return(<div key={h.id} style={{background:"#141414",border:"1px solid #2a2a2a",borderRadius:"10px",marginBottom:"10px",overflow:"hidden"}}><div onClick={()=>setExpandedHabit(isOpen?null:h.id)} style={{padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}><div style={{display:"flex",gap:"12px",alignItems:"center"}}><span style={{fontSize:"20px"}}>{h.icon}</span><div style={{fontSize:"13px",color:"#fff",fontWeight:"700"}}>{h.title}</div></div><span style={{color:"#555"}}>{isOpen?"▲":"▼"}</span></div>{isOpen&&<div style={{padding:"0 16px 16px",borderTop:"1px solid #222"}}><div style={{fontSize:"12px",color:"#aaa",lineHeight:1.6,marginTop:"10px"}}>{h.desc}</div></div>}</div>);})}
+            {[
+              {phase:"Foundation (Now)",color:"#4ade80",items:["Sleep anchor: 10:30pm","3 posture checks daily","Stretch every rest day","Log before sleeping"]},
+              {phase:"Build (Day 51+)",color:"#facc15",items:["Pull-ups every gym visit","Shadow box 2x/week minimum","Energy check before sessions","Sunday weekly review in notes"]},
+              {phase:"Peak (Day 111+)",color:"#f97316",items:["8 hrs sleep non-negotiable","Visualise 20 pull-ups daily","Taper volume Week 20-21","Rest days = Yin yoga + journaling"]},
+            ].map((block,bi)=>(<div key={bi} style={{marginTop:8,background:"#0d0d0d",border:`1px solid ${block.color}22`,borderRadius:10,padding:"14px 16px",marginBottom:8}}><div style={{color:block.color,fontWeight:700,fontSize:12,marginBottom:10}}>{block.phase}</div>{block.items.map((r,i)=>(<div key={i} style={{display:"flex",gap:8,marginBottom:6}}><span style={{color:block.color,fontSize:11}}>→</span><span style={{color:"#888",fontSize:11}}>{r}</span></div>))}</div>))}
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+
+</script>
+</body>
+</html>
