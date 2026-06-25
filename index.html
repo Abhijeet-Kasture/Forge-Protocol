@@ -1,0 +1,1290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Forge Protocol"/>
+<meta name="theme-color" content="#0e0e0e"/>
+<title>Forge Protocol</title>
+<link rel="manifest" href="manifest.json"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{background:#0e0e0e;color:#fff;font-family:'DM Mono','Courier New',monospace;overscroll-behavior:none;}
+input,textarea,button{font-family:'DM Mono','Courier New',monospace;}
+textarea{-webkit-appearance:none;}
+::-webkit-scrollbar{width:0;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js" crossorigin="anonymous"></script>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef } = React;
+
+const SB_URL = "https://qwejbpaijithpqrcmqpw.supabase.co";
+const SB_KEY = "sb_publishable_zTHuOsJ5P-O3WfYTAAt-SQ_4DjFRps0";
+async function sbGet(table, key) {
+  const r = await fetch(SB_URL+"/rest/v1/"+table+"?key=eq."+encodeURIComponent(key)+"&select=*",
+    {headers:{apikey:SB_KEY,Authorization:"Bearer "+SB_KEY}});
+  return r.ok ? r.json() : [];
+}
+async function sbGetWeek(key, wid) {
+  const r = await fetch(SB_URL+"/rest/v1/forge_logs?key=eq."+encodeURIComponent(key)+"&week_id=eq."+wid+"&select=*",
+    {headers:{apikey:SB_KEY,Authorization:"Bearer "+SB_KEY}});
+  return r.ok ? r.json() : [];
+}
+async function sbUpsert(table, row) {
+  await fetch(SB_URL+"/rest/v1/"+table, {method:"POST",
+    headers:{apikey:SB_KEY,Authorization:"Bearer "+SB_KEY,"Content-Type":"application/json","Prefer":"resolution=merge-duplicates"},
+    body:JSON.stringify(row)});
+}
+
+const DAYS=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const FULL_DAYS=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+const DIWALI=new Date("2026-11-08");
+const HABITS_IDS=["posture","water","pullups_gym","sleep","micro","diet","win"];
+function getWeekId(){const n=new Date(),d=n.getDay(),diff=n.getDate()-d+(d===0?-6:1);return new Date(new Date(n).setDate(diff)).toISOString().split("T")[0];}
+function getTodayIdx(){const d=new Date().getDay();return d===0?6:d-1;}
+const DAYS_TO_DIWALI=Math.max(0,Math.ceil((DIWALI-new Date())/86400000));
+const SC=p=>p>=80?"#a8ff87":p>=50?"#e8ff47":p>0?"#ff7847":"#555";
+
+// ── 30 GYM SESSIONS (A1-A10 upper, B1-B10 lower, C1-C10 core) ────
+const GS = [
+  {id:"A1",f:"upper",l:"Upper A1 — Shoulder Girdle",
+   pu:{t:"Dead Hang 4x30s + Scapular Pull 4x10 + Close Grip 3x5",n:"No wide grip unassisted yet. Build the foundation first."},
+   w:["Arm circles 20x","Band pull-aparts 20x","Cat-cow 10x","Dead hang 20s"],
+   e:[{n:"Dead Hang",s:"4x30s",no:"Relax into it. Active shoulders, not shrugged."},
+      {n:"Scapular Pull",s:"4x10",no:"Hang, retract blades only. No elbow bend."},
+      {n:"Close Grip Pull-up",s:"3x5",no:"Full ROM. Chin over bar. Band if needed."},
+      {n:"Lat Pulldown wide",s:"3x10",no:"3 sec descent. Trains the pull-up path."},
+      {n:"Face Pull",s:"3x15",no:"Posture cornerstone. Never skip."},
+      {n:"Dumbbell Row",s:"3x10",no:"Scapular squeeze at top."}],
+   c:["Lat stretch on bar 30s each","Doorway chest stretch 45s","Child pose 60s"]},
+  {id:"A2",f:"upper",l:"Upper A2 — Negatives",
+   pu:{t:"Negative wide grip 4x4 (5s down) + Close grip 3x6",n:"Jump to top. 5-second descent. Fastest way to build pulling strength."},
+   w:["Dead hang 25s","Shoulder CARs 10x","Band pull-aparts 20x"],
+   e:[{n:"Negative Pull-up wide",s:"4x4",no:"5 second descent every rep. This IS your wide grip training."},
+      {n:"Close Grip Pull-up",s:"3x6",no:"Full ROM. Rest 90s between sets."},
+      {n:"Seated Cable Row",s:"3x10",no:"Retract scapula fully. Slow eccentric."},
+      {n:"Overhead Press",s:"3x8",no:"Ribs down. Core braced."},
+      {n:"Band Pull-Apart",s:"3x20",no:"Between every pressing set."},
+      {n:"Wall Angels",s:"3x10",no:"Back flat against wall entire time."}],
+   c:["Passive hang 30s","Chest opener 30s x2","Neck side stretch 30s each"]},
+  {id:"A3",f:"upper",l:"Upper A3 — First Wide Reps",
+   pu:{t:"Assisted wide grip 3x6 + Close grip 3x7",n:"Lightest band you can manage. Full ROM every rep."},
+   w:["Jump rope 2 min","Dead hang 25s","Arm circles 20x"],
+   e:[{n:"Assisted Wide Grip Pull-up",s:"3x6",no:"Lightest band. Full ROM. Chin over bar every time."},
+      {n:"Close Grip Pull-up",s:"3x7",no:"Bodyweight. Rest 2 min between sets."},
+      {n:"Dumbbell Bench Press",s:"3x10",no:"Pause 1s at chest."},
+      {n:"TRX Row",s:"3x12",no:"Scapular retraction at top."},
+      {n:"Face Pull",s:"3x15",no:"Posture. Every upper session."},
+      {n:"Plank",s:"3x40s",no:"Neutral spine. Core for pull-up lockout."}],
+   c:["Lat stretch 30s each","Pigeon 60s each","Supine twist 45s each"]},
+  {id:"A4",f:"upper",l:"Upper A4 — First Unassisted Wide",
+   pu:{t:"Unassisted wide grip 3x max + Close grip 3x8",n:"Even 1 rep is a milestone. Log total across 3 sets carefully."},
+   w:["Dead hang 30s","Scapular pulls 12x","Band pull-aparts 20x"],
+   e:[{n:"Wide Grip Pull-up unassisted",s:"3x max",no:"First real test. 1 rep counts. Log total."},
+      {n:"Close Grip Pull-up",s:"3x8",no:"Building volume on stronger grip."},
+      {n:"Lat Pulldown",s:"3x10",no:"Heavier than A1."},
+      {n:"Dumbbell Shoulder Press",s:"3x10",no:"Seated or standing. Core braced."},
+      {n:"Cable Row",s:"3x10",no:"Full scapular retraction. 1s squeeze."},
+      {n:"Dead Hang",s:"3x35s",no:"Grip endurance increases your rep count."}],
+   c:["Passive hang 40s","Full shoulder stretch","Child pose 90s"]},
+  {id:"A5",f:"upper",l:"Upper A5 — Wide Grip Volume",
+   pu:{t:"Wide grip 4x max + Close grip weighted 3x5 (+5kg)",n:"Log total reps across 4 sets. First weighted close grip."},
+   w:["Dead hang 30s","Jump rope 2 min","Scapular pulls 15x"],
+   e:[{n:"Wide Grip Pull-up",s:"4x max",no:"Rest 2 min between sets. Log total."},
+      {n:"Close Grip Pull-up +5kg",s:"3x5",no:"Strength overload. Belt or hold dumbbell."},
+      {n:"Barbell Row",s:"4x8",no:"Pull to chest not chin."},
+      {n:"Overhead Press",s:"3x10",no:"Slightly heavier than A3."},
+      {n:"Face Pull",s:"4x15",no:"4 sets now."},
+      {n:"Farmer Carry",s:"3x40s",no:"Grip endurance = more pull-up reps."}],
+   c:["Bar hang 40s","Pigeon 60s each","Forearm stretch 30s each"]},
+  {id:"A6",f:"upper",l:"Upper A6 — Ladder Protocol",
+   pu:{t:"Ladder 1-2-3-2-1 x2 (wide grip) + Weighted close grip 3x5 (+7.5kg)",n:"30s rest between rungs. 3 min between rounds. Builds density."},
+   w:["Dead hang 35s","Scapular pulls 15x","Shadow boxing 2 min"],
+   e:[{n:"Pull-up Ladder wide",s:"1-2-3-2-1 x2",no:"Never to failure. Quality reps only."},
+      {n:"Close Grip Pull-up +7.5kg",s:"3x5",no:"Heavier than A5."},
+      {n:"Push Press",s:"4x6",no:"Explosive. Boxing power transfer."},
+      {n:"TRX Row",s:"4x10",no:"Pause at top."},
+      {n:"Landmine Press",s:"3x8 each",no:"Unilateral. Shoulder health."},
+      {n:"Face Pull",s:"4x15",no:"Every session."}],
+   c:["Passive hang 45s","Lat stretch on bar","Thoracic foam roll 3 min"]},
+  {id:"A7",f:"upper",l:"Upper A7 — Max Volume",
+   pu:{t:"Wide grip 5x max + Weighted close grip 3x5 (+10kg)",n:"5 sets wide grip. Log total. Weekly benchmark."},
+   w:["Dead hang 40s","Jump rope 3 min","Scapular pulls 15x"],
+   e:[{n:"Wide Grip Pull-up",s:"5x max",no:"Sub-max sets 1-4. Set 5 empty the tank."},
+      {n:"Close Grip Pull-up +10kg",s:"3x5",no:"Heavier than A6."},
+      {n:"Barbell Row",s:"4x8",no:"Heavier than A5. Progressive overload."},
+      {n:"Overhead Press",s:"4x8",no:"4 sets now."},
+      {n:"Dead Hang",s:"3x max",no:"Track your time each session."},
+      {n:"Face Pull",s:"4x15",no:"Posture. Always."}],
+   c:["Full hang 50s","Pigeon 90s each","Supine twist 60s each"]},
+  {id:"A8",f:"upper",l:"Upper A8 — Cluster Sets",
+   pu:{t:"Cluster 5x(3+2+2) wide grip + Weighted 3x4 (+12.5kg)",n:"10s rest between mini-sets. 2 min between clusters. 35 total reps target."},
+   w:["Dead hang 40s","Scapular pulls 15x","Jump rope 3 min"],
+   e:[{n:"Pull-up Cluster Sets",s:"5x(3+2+2)",no:"10s between clusters. 2 min between sets."},
+      {n:"Weighted Pull-up +12.5kg",s:"3x4",no:"Heavy. Makes bodyweight feel light."},
+      {n:"Weighted Dip",s:"4x8",no:"Full range. Chest opens at bottom."},
+      {n:"Cable Row",s:"4x8",no:"Heavy. Full scapular retraction."},
+      {n:"Face Pull",s:"4x20",no:"Higher reps. Shoulder endurance."},
+      {n:"Dead Hang",s:"2x max",no:"After everything. Track time."}],
+   c:["Passive hang 60s","Full shoulder stretch","Thoracic foam roll"]},
+  {id:"A9",f:"upper",l:"Upper A9 — Max Effort",
+   pu:{t:"1x absolute max then 4x60% + Weighted 3x4 (+15kg)",n:"Fresh at start. One PB attempt. Log it. Then volume."},
+   w:["Dead hang 45s","Scapular pulls 15x","Jump rope 3 min"],
+   e:[{n:"Pull-up Max Set",s:"1x absolute max",no:"PB attempt. Fresh. Log it."},
+      {n:"Pull-up Volume",s:"4x60% of max",no:"5 min rest after max. Then 4 volume sets."},
+      {n:"Weighted Pull-up +15kg",s:"3x4",no:"Peak strength loading."},
+      {n:"Push Press",s:"5x5",no:"Strength peak. Heavy and explosive."},
+      {n:"TRX Row",s:"4x12",no:"Lat and rhomboid endurance."},
+      {n:"Face Pull",s:"4x20",no:"Shoulder health in peak weeks."}],
+   c:["Passive hang 60s","Pigeon 2 min each","Full upper body stretch"]},
+  {id:"A10",f:"upper",l:"Upper A10 — Taper",
+   pu:{t:"3x60% max, perfect form only — TAPER",n:"Reduce volume 40%. Every rep textbook perfect. Feel fresh."},
+   w:["Dead hang 30s","Light warm-up 5 min only"],
+   e:[{n:"Wide Grip Pull-up taper",s:"3x60% max",no:"Perfect form. Full ROM. No straining."},
+      {n:"Close Grip Pull-up taper",s:"2x6",no:"Maintenance only."},
+      {n:"Face Pull",s:"3x15",no:"Never skip even in taper."},
+      {n:"Light Row",s:"2x10",no:"Maintenance. Not heavy."},
+      {n:"Dead Hang",s:"2x45s",no:"Should feel easy today."}],
+   c:["Full passive hang 60s","Full body stretch 10 min","Visualise 20 pull-ups 3 min"]},
+  {id:"B1",f:"lower",l:"Lower B1 — Hip Hinge Foundation",
+   pu:{t:"Dead hang 3x25s between sets",n:"Grip endurance on lower day. Multi-task."},
+   w:["Hip circles 15x each","Glute bridge 20x","Hip flexor lunge 30s each"],
+   e:[{n:"Goblet Squat",s:"3x12",no:"Heels flat. Chest tall. Pause 2s at bottom."},
+      {n:"Romanian Deadlift",s:"3x10",no:"Feel the hamstring stretch. Neutral spine."},
+      {n:"Hip Thrust",s:"3x12",no:"Squeeze 2s top. Fixes anterior pelvic tilt."},
+      {n:"Reverse Lunge",s:"3x10 each",no:"Front shin vertical. Controlled."},
+      {n:"Dead Bug",s:"3x10 each",no:"Core anti-extension. Do not rush."},
+      {n:"Dead Hang",s:"3x25s",no:"Grip work between lower sets."}],
+   c:["Pigeon 60s each","Hip flexor lunge 45s each","Supine twist 45s each"]},
+  {id:"B2",f:"lower",l:"Lower B2 — Single Leg",
+   pu:{t:"Dead hang 3x30s + Scapular pull 2x10",n:"Lower days still include pull-up accessory."},
+   w:["Leg swings 15x each","Glute bridge 20x","Hip CARs 10x each"],
+   e:[{n:"Bulgarian Split Squat",s:"3x10 each",no:"Fixes hip imbalances. Knee tracks toe."},
+      {n:"Romanian Deadlift",s:"3x10",no:"Heavier than B1. Same technique."},
+      {n:"Hip Thrust",s:"3x15",no:"Higher reps than B1."},
+      {n:"Step-up",s:"3x12 each",no:"Drive through heel. Boxing leg power."},
+      {n:"Side Plank",s:"3x35s each",no:"Lateral chain. Knee and hip health."},
+      {n:"Dead Hang",s:"3x30s",no:"Grip work."}],
+   c:["Pigeon 75s each","90/90 hip stretch 60s each","Wide fold 60s"]},
+  {id:"B3",f:"lower",l:"Lower B3 — Posterior Chain",
+   pu:{t:"Hanging knee raise 3x12 + Dead hang 3x30s",n:"Core and grip on lower day. Hanging work keeps frequency high."},
+   w:["Jump rope 2 min","Hip hinge drill 15x","Glute activation walk 20x"],
+   e:[{n:"Trap Bar Deadlift",s:"4x6",no:"Power. Full hip extension. Neutral spine."},
+      {n:"Bulgarian Split Squat",s:"3x10 each",no:"Heavier than B2."},
+      {n:"Leg Press",s:"3x12",no:"Glute-focused depth."},
+      {n:"Hanging Knee Raise",s:"3x12",no:"Core and lat endurance."},
+      {n:"Calf Raise",s:"3x20",no:"Footwork base for boxing."},
+      {n:"Dead Hang",s:"3x30s",no:"Grip endurance."}],
+   c:["Hamstring stretch 60s each","Hip flexor lunge 60s each","Supine twist 60s each"]},
+  {id:"B4",f:"lower",l:"Lower B4 — Explosive Power",
+   pu:{t:"Hanging knee raise 3x15 + Dead hang 3x35s",n:"Increasing hang time. Your grip ceiling is your pull-up ceiling."},
+   w:["Box jump 3x5 light","Hip CARs 10x","Glute bridge 20x"],
+   e:[{n:"Jump Squat",s:"4x8",no:"Land soft. Full control. Boxing explosive base."},
+      {n:"Trap Bar Deadlift",s:"4x5",no:"Heavier than B3. Strength focus."},
+      {n:"Walking Lunge",s:"3x12 each",no:"Boxing footwork endurance."},
+      {n:"Glute Ham Raise",s:"3x8",no:"Or Nordic curl. Eccentric hamstring."},
+      {n:"Hanging Knee Raise",s:"3x15",no:"Core peak on lower day."},
+      {n:"Dead Hang",s:"3x35s",no:"Grip endurance."}],
+   c:["Pigeon 90s each","Wide fold 90s","Supine twist 60s each"]},
+  {id:"B5",f:"lower",l:"Lower B5 — Strength Peak",
+   pu:{t:"L-sit hang 3x15s + Dead hang 3x40s",n:"L-sit combines core and grip. Try it even partial."},
+   w:["Jump rope 3 min","Hip hinge drill 15x","Glute bridge 20x"],
+   e:[{n:"Barbell Squat",s:"5x5",no:"Heavy. 5 rep strength. Rest 3 min."},
+      {n:"Romanian Deadlift",s:"4x8",no:"Heavier than B3."},
+      {n:"Hip Thrust weighted",s:"4x10",no:"Add barbell or dumbbell."},
+      {n:"Pallof Press",s:"3x12 each",no:"Anti-rotation core. Boxing essential."},
+      {n:"L-Sit Hang",s:"3x15s",no:"Legs parallel to floor."},
+      {n:"Dead Hang",s:"2x40s",no:"Grip strength."}],
+   c:["Pigeon 90s each","90/90 hip 60s each","Hip flexor lunge 60s each"]},
+  {id:"B6",f:"lower",l:"Lower B6 — Unilateral Focus",
+   pu:{t:"Hanging leg raise 3x10 + Dead hang 3x40s",n:"Full leg raise now. More demanding than knee raise."},
+   w:["Single leg balance 30s each","Hip CARs 10x","Glute bridge 20x"],
+   e:[{n:"Bulgarian Split Squat weighted",s:"4x8 each",no:"Heavier than B2. Single leg peak."},
+      {n:"Single Leg Romanian DL",s:"3x10 each",no:"Balance and hamstring."},
+      {n:"Step-up weighted",s:"3x12 each",no:"Hold dumbbells."},
+      {n:"Hanging Leg Raise",s:"3x10",no:"Full leg parallel to floor."},
+      {n:"Lateral Band Walk",s:"3x20 each",no:"Glute med. Knee health."},
+      {n:"Dead Hang",s:"3x40s",no:"Grip strength."}],
+   c:["Pigeon 90s each","Wide fold 90s","Supine twist 60s each"]},
+  {id:"B7",f:"lower",l:"Lower B7 — Power Endurance",
+   pu:{t:"Hanging leg raise 3x12 + L-sit hang 3x20s",n:"Core endurance for 20-rep pull-up sets."},
+   w:["Jump rope 3 min","Box jump 3x5","Hip CARs 10x"],
+   e:[{n:"Jump Squat",s:"5x8",no:"Max explosive height. Land quiet."},
+      {n:"Trap Bar Deadlift",s:"4x4",no:"Heaviest yet."},
+      {n:"Walking Lunge weighted",s:"3x14 each",no:"Heavier than B4."},
+      {n:"Glute Ham Raise",s:"3x10",no:"More reps than B4."},
+      {n:"Hanging Leg Raise",s:"3x12",no:"Control descent."},
+      {n:"L-Sit Hang",s:"3x20s",no:"Longer than B5."}],
+   c:["Pigeon 2 min each","Hip flexor lunge 60s each","Supine twist 60s each"]},
+  {id:"B8",f:"lower",l:"Lower B8 — Speed Strength",
+   pu:{t:"Dead hang 2x max time",n:"Pure grip endurance test. Log your time. Target 60s+."},
+   w:["Jump rope 4 min intervals","Leg swings 20x","Hip CARs 10x"],
+   e:[{n:"Speed Squat",s:"6x3",no:"60% of max, maximum bar speed."},
+      {n:"Romanian DL",s:"4x6",no:"Heavy but controlled."},
+      {n:"Box Jump max height",s:"4x5",no:"Boxing explosive power."},
+      {n:"Single Leg Press",s:"3x10 each",no:"Unilateral leg strength."},
+      {n:"Dead Hang",s:"2x max",no:"Log your time. 60s+ target."}],
+   c:["Full leg stretch 8 min","Hip flexor lunge 60s each"]},
+  {id:"B9",f:"lower",l:"Lower B9 — Peak Strength",
+   pu:{t:"Hanging leg raise 3x15 + Dead hang 2x50s",n:"Peak hanging strength. Compare to B1 — feel the difference."},
+   w:["Jump rope 3 min","Box jump 3x5","Hip CARs 10x"],
+   e:[{n:"Barbell Squat",s:"5x3",no:"Near max weight."},
+      {n:"Trap Bar Deadlift",s:"3x3",no:"Heaviest of programme."},
+      {n:"Bulgarian Split Squat heavy",s:"3x6 each",no:"Peak single leg strength."},
+      {n:"Nordic Curl",s:"3x8",no:"Eccentric hamstring. Injury prevention."},
+      {n:"Hanging Leg Raise",s:"3x15",no:"Core peak."},
+      {n:"Dead Hang",s:"2x50s",no:"Grip peak. Feel how far you have come."}],
+   c:["Pigeon 2 min each","Wide fold 2 min","Supine twist 60s each"]},
+  {id:"B10",f:"lower",l:"Lower B10 — Taper",
+   pu:{t:"Dead hang 2x30s only — TAPER",n:"Taper week. Reduce lower volume 40%."},
+   w:["Light movement 5 min only"],
+   e:[{n:"Goblet Squat light",s:"2x10",no:"Technique only."},
+      {n:"Romanian DL light",s:"2x8",no:"Maintenance. Feel the movement."},
+      {n:"Hip Thrust",s:"2x10",no:"Glute activation maintenance."},
+      {n:"Dead Hang",s:"2x30s",no:"Feel fresh."}],
+   c:["Full leg stretch 8 min","Visualise Diwali test 3 min"]},
+  {id:"C1",f:"core",l:"Core C1 — Foundation",
+   pu:{t:"Scapular pull 3x12 + Dead hang 3x25s",n:"Core day still hits the bar. Every gym session."},
+   w:["Cat-cow 10x","Hip circles 15x","Dead bug 8x each","Plank 30s"],
+   e:[{n:"Dead Bug",s:"3x10 each",no:"Lower back health. Do not rush."},
+      {n:"Plank",s:"3x45s",no:"Neutral spine. Core for pull-up lockout."},
+      {n:"Pallof Press",s:"3x10 each",no:"Anti-rotation. Boxing essential."},
+      {n:"Hollow Body Hold",s:"3x25s",no:"Direct pull-up carryover."},
+      {n:"Scapular Pull bar",s:"3x12",no:"Shoulder girdle maintenance."},
+      {n:"Dead Hang",s:"3x25s",no:"Grip and shoulder endurance."}],
+   c:["Child pose 60s","Supine twist 60s each","Legs up wall 2 min"]},
+  {id:"C2",f:"core",l:"Core C2 — Rotational Power",
+   pu:{t:"Hanging knee raise 3x10 + Dead hang 3x30s",n:"Hanging combined with rotational core. Boxing and pull-up synergy."},
+   w:["Jump rope 2 min","Thoracic rotation 10x each","Hip circles 15x"],
+   e:[{n:"Landmine Rotation",s:"3x12 each",no:"Explosive rotation. Boxing punch power source."},
+      {n:"Cable Woodchop high to low",s:"3x12 each",no:"Rotational core. Boxing movement pattern."},
+      {n:"Pallof Press",s:"3x12 each",no:"Anti-rotation counterpart."},
+      {n:"Hanging Knee Raise",s:"3x10",no:"Core and lat endurance."},
+      {n:"Hollow Body Hold",s:"3x30s",no:"Longer than C1."},
+      {n:"Dead Hang",s:"3x30s",no:"Grip strength."}],
+   c:["Supine twist 60s each","Hip flexor lunge 45s each","Child pose 60s"]},
+  {id:"C3",f:"core",l:"Core C3 — Anti-Extension",
+   pu:{t:"Hanging knee raise 3x12 + L-sit hang 2x15s",n:"L-sit combines core anti-extension with grip. Direct Diwali prep."},
+   w:["Dead bug 10x","Plank 40s","Jump rope 2 min"],
+   e:[{n:"Ab Wheel Rollout",s:"3x8",no:"Full extension only if lower back stays neutral."},
+      {n:"Dragon Flag assisted",s:"3x5",no:"Or lying leg raise."},
+      {n:"Pallof Press",s:"3x12 each",no:"Heavier than C1 and C2."},
+      {n:"Landmine Rotation",s:"3x12 each",no:"Heavier than C2."},
+      {n:"L-Sit Hang",s:"2x15s",no:"Core and grip combined."},
+      {n:"Hollow Body Hold",s:"3x35s",no:"Longest hold yet."}],
+   c:["Child pose 90s","Supine twist 60s each","Legs up wall 3 min"]},
+  {id:"C4",f:"core",l:"Core C4 — Boxing Core",
+   pu:{t:"Hanging leg raise 3x10 + Dead hang 3x35s",n:"Full leg raise on core day. Control the descent."},
+   w:["Shadow boxing 3 min light","Thoracic rotation 10x","Plank 40s"],
+   e:[{n:"Hanging Leg Raise",s:"3x10",no:"Full leg parallel. Control descent. No swing."},
+      {n:"Landmine Rotation",s:"4x12 each",no:"4 sets now. Boxing power source."},
+      {n:"Cable Woodchop",s:"3x12 each",no:"Full rotation. Eyes follow movement."},
+      {n:"Plank with Reach",s:"3x8 each",no:"Stability challenge. Hips don't rotate."},
+      {n:"Ab Wheel",s:"3x10",no:"More reps than C3."},
+      {n:"Dead Hang",s:"3x35s",no:"Grip and shoulder endurance."}],
+   c:["Supine twist 60s each","Child pose 90s","Diaphragmatic breathing 2 min"]},
+  {id:"C5",f:"core",l:"Core C5 — Full Integration",
+   pu:{t:"Hanging leg raise 3x12 + L-sit hang 3x20s",n:"Highest core demand yet. 20 pull-ups require this core strength."},
+   w:["Shadow boxing 3 min","Jump rope 2 min","Dead bug 10x each"],
+   e:[{n:"Dragon Flag",s:"3x6",no:"Or tuck version. Full core integration."},
+      {n:"Hanging Leg Raise",s:"3x12",no:"Higher reps than C4."},
+      {n:"L-Sit Hang",s:"3x20s",no:"Legs parallel to floor."},
+      {n:"Landmine Rotation",s:"4x12 each",no:"Max rotation every rep."},
+      {n:"Ab Wheel Rollout",s:"3x10",no:"Full extension. Lower back flat."},
+      {n:"Hollow Body Hold",s:"4x35s",no:"4 sets now. Peak core endurance."}],
+   c:["Child pose 90s","Supine twist 60s each","Legs up wall 3 min"]},
+  {id:"C6",f:"core",l:"Core C6 — Power and Speed",
+   pu:{t:"Pull-up cluster 3x(2+2+1) wide grip",n:"Clusters appear on core day now. Pull-up work in every session."},
+   w:["Jump rope 3 min","Shadow boxing 2 min","Plank 45s"],
+   e:[{n:"Pull-up Cluster wide",s:"3x(2+2+1)",no:"10s between clusters. 3 min between sets."},
+      {n:"Medicine Ball Slam",s:"4x10",no:"Or explosive crunch. Core power."},
+      {n:"Landmine Rotation",s:"4x10 each",no:"Explosive now. Fast concentric."},
+      {n:"Hanging Leg Raise",s:"4x12",no:"Higher volume."},
+      {n:"L-Sit Hang",s:"3x25s",no:"Longer than C5."},
+      {n:"Hollow Body Hold",s:"4x40s",no:"Core endurance for 20-rep attempt."}],
+   c:["Passive hang 60s","Supine twist 60s each","Child pose 90s"]},
+  {id:"C7",f:"core",l:"Core C7 — Rotational Peak",
+   pu:{t:"Pull-up cluster 4x(3+2+2) — 40 total reps target",n:"More clusters. Higher volume. Core and pull-up synergy peaking."},
+   w:["Shadow boxing 4 min","Jump rope 2 min","Dead bug 10x"],
+   e:[{n:"Pull-up Cluster wide",s:"4x(3+2+2)",no:"40 reps total target. Quality every rep."},
+      {n:"Landmine Rotation",s:"5x10 each",no:"5 sets. Peak boxing rotational power."},
+      {n:"Cable Woodchop",s:"4x12 each",no:"Heavier than all previous C sessions."},
+      {n:"Dragon Flag",s:"3x8",no:"Full extension. Peak anti-extension."},
+      {n:"Hanging Leg Raise",s:"4x15",no:"Core endurance."},
+      {n:"Dead Hang",s:"2x max",no:"Log time. Should be 70s+ now."}],
+   c:["Passive hang 60s","Child pose 90s","Supine twist 60s each"]},
+  {id:"C8",f:"core",l:"Core C8 — Max Core",
+   pu:{t:"Wide grip pull-up 3x max — log PB",n:"Max effort on core day. Strong core adds reps."},
+   w:["Dead hang 40s","Shadow boxing 3 min","Jump rope 2 min"],
+   e:[{n:"Wide Grip Pull-up",s:"3x max",no:"PB attempt on core day."},
+      {n:"L-Sit Hang",s:"4x30s",no:"Peak L-sit. Legs parallel."},
+      {n:"Ab Wheel Rollout",s:"4x12",no:"Full extension. Core peak."},
+      {n:"Landmine Rotation",s:"4x10 each",no:"Explosive. Fast and powerful."},
+      {n:"Hanging Leg Raise",s:"4x15",no:"Core endurance with fatigued lats."},
+      {n:"Hollow Body Hold",s:"5x40s",no:"5 sets. Highest volume. Diwali prep."}],
+   c:["Passive hang 60s","Full body stretch 8 min"]},
+  {id:"C9",f:"core",l:"Core C9 — Speed and Endurance",
+   pu:{t:"Cluster 5x(3+3+2) — 40 total reps target",n:"If you can do this, 20 reps in one set is within reach."},
+   w:["Jump rope 4 min","Shadow boxing 3 min","Dead hang 40s"],
+   e:[{n:"Pull-up Cluster 5x(3+3+2)",s:"5 clusters",no:"40 reps total. Rest 2.5 min between."},
+      {n:"Speed Landmine Rotation",s:"4x12 each",no:"Fast as possible. Explosive."},
+      {n:"Dragon Flag",s:"3x10",no:"Full extension. Peak strength."},
+      {n:"Hanging Leg Raise",s:"5x15",no:"5 sets. Core conditioning."},
+      {n:"L-Sit Hang",s:"3x30s",no:"30s holds. Peak together."}],
+   c:["Passive hang 90s","Full body stretch 10 min","Breathwork 4-7-8 x4"]},
+  {id:"C10",f:"core",l:"Core C10 — Taper",
+   pu:{t:"3x60% max, taper — FINAL PREP",n:"Last pre-Diwali session. Feel the strength. Trust the work."},
+   w:["Light movement 5 min easy pace"],
+   e:[{n:"Wide Grip Pull-up taper",s:"3x60% max",no:"Every rep perfect. Savour the movement."},
+      {n:"Hollow Body Hold",s:"2x30s",no:"Maintenance only."},
+      {n:"Dead Hang",s:"2x30s",no:"Feel the grip. It is strong now."},
+      {n:"Visualisation",s:"5 min",no:"See 20 pull-ups. Feel Diwali. This is training."}],
+   c:["Full body stretch 10 min","Savasana 5 min"]}
+];
+
+function scaleSession(s, gymCount) {
+  if (gymCount <= 30) return s;
+  const scaled = JSON.parse(JSON.stringify(s));
+  scaled.label = s.l + " (R2)";
+  scaled.e = s.e.map(ex => {
+    const sets = ex.s
+      .replace(/^3x([0-9])/,"4x$1").replace(/^3xmax/,"5xmax")
+      .replace(/^3x([0-9]+)s/,(_,n)=>"4x"+(parseInt(n)+5)+"s")
+      .replace(/^2x([0-9]+)s/,(_,n)=>"3x"+(parseInt(n)+5)+"s")
+      .replace(/^2xmax/,"3xmax");
+    return {...ex, s: sets, no: ex.no+" [R2: push the load]"};
+  });
+  return scaled;
+}
+
+function getGymSession(gymCount) {
+  if (!gymCount || gymCount < 1) gymCount = 1;
+  const eff = Math.min(gymCount, 60);
+  const isR2 = eff > 30;
+  const pos = (eff - 1) % 30;
+  const focusIdx = pos % 3;
+  const sessionNum = Math.floor(pos / 3);
+  const focuses = ["upper","lower","core"];
+  const focus = focuses[focusIdx];
+  const arr = GS.filter(s => s.f === focus);
+  const session = arr[sessionNum % arr.length];
+  const result = isR2 ? scaleSession(session, gymCount) : {...session};
+  result._label = result.label || result.l || result.id;
+  result._focus = focus;
+  result._sessionNum = eff;
+  return result;
+}
+
+function getNextGymSession(gymCount) { return getGymSession((gymCount||0)+1); }
+
+// ── BOXING ──────────────────────────────────────────────────────
+const BOXING = {
+  bag:[
+    {id:"BAG_A",l:"Punch Bag A — Technique",dur:"30-35 min",
+     rounds:[{r:1,focus:"Jab only — touch, feel the retract",dur:"2 min",rest:"1 min"},
+             {r:2,focus:"Jab-Cross — reset before next combo",dur:"2 min",rest:"1 min"},
+             {r:3,focus:"1-2-3 — rotate fully on hook",dur:"2 min",rest:"1 min"},
+             {r:4,focus:"Body shots — bend knees, protect hands",dur:"2 min",rest:"1 min"},
+             {r:5,focus:"Freestyle 60% power",dur:"2 min",rest:"—"}],
+     cues:["Wrists straight on impact","Don't punch when bag swings into you","Gloves 12-14oz min"],
+     cool:["Shake out hands","Forearm massage 30s each","Shoulder stretch bilateral"]},
+    {id:"BAG_B",l:"Punch Bag B — Power Combos",dur:"40-45 min",
+     rounds:[{r:1,focus:"1-2-3-2 wall — 3 combos, pivot, repeat",dur:"3 min",rest:"1 min"},
+             {r:2,focus:"Body-body-head — bend then rise",dur:"3 min",rest:"1 min"},
+             {r:3,focus:"Speed round — light and fast",dur:"3 min",rest:"1 min"},
+             {r:4,focus:"Power round — max on every 4th punch",dur:"3 min",rest:"1 min"},
+             {r:5,focus:"Uppercuts close range — bend knees",dur:"3 min",rest:"1 min"},
+             {r:6,focus:"Freestyle — instincts",dur:"3 min",rest:"—"}],
+     cues:["Rotate torso not just arms","Don't chase the bag","Pace yourself"],
+     cool:["Forearm release 30s each","Full shoulder stretch","Neck release"]},
+    {id:"BAG_C",l:"Punch Bag C — Fighter Conditioning",dur:"45-50 min",
+     rounds:[{r:1,focus:"Warm-up flow — build intensity",dur:"3 min",rest:"1 min"},
+             {r:2,focus:"12-punch combinations — no hesitation",dur:"3 min",rest:"1 min"},
+             {r:3,focus:"Explosive bursts — 10 max shots then move",dur:"3 min",rest:"1 min"},
+             {r:4,focus:"Clinch — uppercuts and short hooks",dur:"3 min",rest:"1 min"},
+             {r:5,focus:"Non-stop conditioning — manage breathing",dur:"3 min",rest:"1 min"},
+             {r:6,focus:"Power round — max effort",dur:"3 min",rest:"1 min"},
+             {r:7,focus:"Championship round — everything",dur:"3 min",rest:"—"}],
+     cues:["Breathe out on every punch","Mouthguard if available","This is fight fitness"],
+     cool:["Light shadow 1 min","Full forearm and wrist release","Chest opener","Box breathing x4"]},
+  ],
+  shadow:[
+    {id:"SHA_A",l:"Shadow Boxing A — Foundations",dur:"25-30 min",
+     rounds:[{r:1,focus:"Stance and footwork only",dur:"3 min",rest:"1 min"},
+             {r:2,focus:"Jab only — snap and retract",dur:"3 min",rest:"1 min"},
+             {r:3,focus:"1-2 — pivot after every cross",dur:"3 min",rest:"1 min"},
+             {r:4,focus:"Slips and jab counter",dur:"3 min",rest:"1 min"},
+             {r:5,focus:"Freestyle slow — feel every muscle",dur:"3 min",rest:"—"}],
+     cues:["Chin down eyes up","Return to guard after every punch","Back heel off floor"],
+     cool:["Wrist circles","Shoulder cross-body 30s each","Neck side stretch"]},
+    {id:"SHA_B",l:"Shadow Boxing B — Combinations",dur:"30-35 min",
+     rounds:[{r:1,focus:"1-2-3 — rotate fully on hook",dur:"3 min",rest:"1 min"},
+             {r:2,focus:"1-2-3-6 — add the uppercut",dur:"3 min",rest:"1 min"},
+             {r:3,focus:"Double jab — cross — slip — counter",dur:"3 min",rest:"1 min"},
+             {r:4,focus:"Footwork — angle out after every combo",dur:"3 min",rest:"1 min"},
+             {r:5,focus:"Speed round — 50% power 100% speed",dur:"3 min",rest:"1 min"},
+             {r:6,focus:"Pressure fighter — walk them down",dur:"3 min",rest:"—"}],
+     cues:["Rotate hips into every punch","Weight transfer back to front","Lead hand up when throwing right"],
+     cool:["Slow 1-2 for 60s","Full shoulder stretch","Hip flexor lunge stretch"]},
+    {id:"SHA_C",l:"Shadow Boxing C — Fight Simulation",dur:"35-40 min",
+     rounds:[{r:1,focus:"Southpaw stance — mirror your usual game",dur:"3 min",rest:"1 min"},
+             {r:2,focus:"Champion round — your best combinations",dur:"3 min",rest:"1 min"},
+             {r:3,focus:"Counter-punching only",dur:"3 min",rest:"1 min"},
+             {r:4,focus:"6+ punch strings — no stopping mid-combo",dur:"3 min",rest:"1 min"},
+             {r:5,focus:"Conditioning — 70% pace non-stop",dur:"3 min",rest:"1 min"},
+             {r:6,focus:"Slow and perfect — technique mastery",dur:"3 min",rest:"1 min"},
+             {r:7,focus:"Freestyle — forget technique, just fight",dur:"3 min",rest:"—"}],
+     cues:["Exhale sharply on every shot","Stay bouncy when tired","Combinations end with defence"],
+     cool:["Shadow slow-mo 2 min","Full upper body stretch","Box breathing 4-4-4-4 x4"]},
+  ],
+};
+function getBoxingSession(count, type) {
+  const arr = type==="punchBag" ? BOXING.bag : BOXING.shadow;
+  return arr[((count)||0) % arr.length];
+}
+
+// ── HOME / YOGA / REST ───────────────────────────────────────────
+const HOME_S = [
+  {l:"Home A — Upper + Posture",dur:"35-40 min",
+   e:[{n:"Push-up scapular focus",s:"3x10",no:"Protract at top"},
+      {n:"Pike Push-up",s:"3x8",no:"Shoulder health"},
+      {n:"Wall Angels",s:"3x10",no:"Back flat entire time"},
+      {n:"Superman Hold",s:"3x10",no:"2s hold each rep"},
+      {n:"Reverse Snow Angel",s:"3x12",no:"Posture gold"},
+      {n:"Hollow Body Hold",s:"3x25s",no:"Pull-up carryover"}],
+   c:["Thread the needle 30s each","Chest opener 45s","Child pose 60s"]},
+  {l:"Home B — Core + Lower",dur:"35-40 min",
+   e:[{n:"Glute Bridge",s:"3x15",no:"Squeeze 2s at top"},
+      {n:"Dead Bug",s:"3x8 each",no:"Do not rush"},
+      {n:"Bodyweight Squat",s:"3x15",no:"Pause 2s at bottom"},
+      {n:"Reverse Lunge",s:"3x10 each",no:"Front shin vertical"},
+      {n:"Plank",s:"3x40s",no:"Neutral spine"},
+      {n:"Side Plank",s:"3x30s each",no:"Lateral chain"}],
+   c:["Hip flexor lunge 45s each","90/90 hip 60s each","Supine twist 45s each"]},
+  {l:"Home C — Full Body",dur:"40-45 min",
+   e:[{n:"Explosive Push-up",s:"4x8",no:"Fast concentric"},
+      {n:"Jump Squat",s:"3x10",no:"Land soft"},
+      {n:"Commando Plank",s:"3x8 each",no:"Hips level"},
+      {n:"Single Leg Glute Bridge",s:"3x12 each",no:"Hip stability"},
+      {n:"Diamond Push-up",s:"3xmax",no:"Tricep lockout = pull-up lockout"}],
+   c:["Full body flow 5 min","Savasana 2 min"]},
+];
+const YOGA_S = [
+  {l:"Yoga A — Spine Reset",dur:"20-25 min",
+   seq:[{p:"Cat-Cow Flow",d:"10 reps slow",b:"Spinal articulation"},
+        {p:"Child Pose",d:"90s",b:"Decompress spine"},
+        {p:"Thread the Needle",d:"45s each side",b:"Thoracic rotation"},
+        {p:"Low Lunge",d:"60s each side",b:"Hip flexor release"},
+        {p:"Supine Spinal Twist",d:"60s each side",b:"Lumbar decompression"},
+        {p:"Legs Up Wall",d:"3 min",b:"Nervous system reset"}],
+   bw:"Inhale 4 exhale 6 throughout"},
+  {l:"Yoga B — Hip and Flow",dur:"30-35 min",
+   seq:[{p:"Sun Salutation A x3",d:"5 min",b:"Full body warm-up"},
+        {p:"Warrior I to II",d:"90s each side",b:"Hip alignment"},
+        {p:"Pigeon Pose",d:"90s each side",b:"Deep hip rotation"},
+        {p:"Lizard Pose",d:"90s each side",b:"Deep hip flexor"},
+        {p:"Seated Forward Fold",d:"2 min",b:"Hamstring and lower back"},
+        {p:"Savasana",d:"3 min",b:"Integration"}],
+   bw:"Ujjayi throughout. Audible exhale."},
+  {l:"Yoga C — Deep Recovery",dur:"35-40 min",
+   seq:[{p:"Butterfly Yin",d:"3 min",b:"Inner groin and hip"},
+        {p:"Sleeping Swan",d:"3 min each side",b:"Deep hip release"},
+        {p:"Half Splits",d:"2 min each side",b:"Hamstring depth"},
+        {p:"Supported Fish",d:"2 min",b:"Chest opening"},
+        {p:"Visualisation Savasana",d:"5 min",b:"See 20 pull-ups. Feel Diwali."}],
+   bw:"Long slow exhales. Let gravity do the work."},
+];
+const REST_S = [
+  {l:"Active Recovery A",
+   opts:["Gentle walk 20-30 min","Box breathing 4-4-4-4 x10","Foundation stretch 15 min"],
+   avoid:["Zero movement","Clean eating below 7/10"],nudge:"Rate energy 1-10 in notes."},
+  {l:"Strategic Recovery B",
+   opts:["Yoga Nidra 20 min (YouTube)","Light shadow boxing 10 min slow only","Nature walk 30-40 min phone away"],
+   avoid:["Under 7 hours sleep","Processed food"],nudge:"Check pull-up log. On track for 20?"},
+  {l:"Performance Recovery C",
+   opts:["Contrast shower hot 5min cold 30s x3","Yin yoga 30 min","Journaling — what worked what to adjust?"],
+   avoid:["Full workout on rest day","Under 8 hrs sleep"],nudge:"Trust the plan. Rest wins Diwali."},
+];
+function getHomeSession(c){return HOME_S[(c||0)%3];}
+function getYogaSession(c){return YOGA_S[(c||0)%3];}
+function getRestSession(c){return REST_S[(c||0)%3];}
+
+const DAY_REC = {
+  Monday:   {primary:"gym",      note:"Gym day — Upper body + pull-ups"},
+  Tuesday:  {primary:"gym",      note:"Gym day — Lower body"},
+  Wednesday:{primary:"yoga",     note:"Home day — yoga or shadow boxing"},
+  Thursday: {primary:"gym",      note:"Gym day — Core + pull-ups"},
+  Friday:   {primary:"punchBag", note:"Boxing day — punch bag or shadow boxing"},
+  Saturday: {primary:"home",     note:"Home day — workout or yoga"},
+  Sunday:   {primary:"rest",     note:"Rest and recover"},
+};
+function getTodayRec(){
+  const days=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  return DAY_REC[days[new Date().getDay()]]||DAY_REC["Sunday"];
+}
+
+const HABITS=[
+  {id:"posture",icon:"🏛",title:"Posture checks x3",desc:"10am, 1pm, 4pm. Chin tuck, shoulder roll, spine tall."},
+  {id:"water",icon:"💧",title:"2L water by 3pm",desc:"Bottle on desk, bottle in car."},
+  {id:"pullups_gym",icon:"🔱",title:"Pull-ups at gym",desc:"Every gym visit: get on the bar."},
+  {id:"sleep",icon:"🌙",title:"10:30pm sleep anchor",desc:"In bed by 10:30. Phone down."},
+  {id:"micro",icon:"⚡",title:"Micro-moves every 45min",desc:"10 glute squeezes, 10 shoulder shrugs, 5 neck tilts."},
+  {id:"diet",icon:"🥗",title:"Clean eating",desc:"Track it. Mark it here."},
+  {id:"win",icon:"🧠",title:"Daily 1% win",desc:"One thing better than yesterday."},
+];
+
+const PHASES=[
+  {name:"Foundation",sessions:[1,20],color:"#4ade80",badge:"🌱",
+   pullupTarget:"Close grip 3-8 reps. First wide grip attempts.",
+   gymFocus:"Learn movements. Build shoulder girdle. Negatives and assisted wide grip.",
+   boxFocus:"Technique. Every punch correct. Footwork and guard.",weeks:"Weeks 1-7"},
+  {name:"Build",sessions:[21,40],color:"#facc15",badge:"⚡",
+   pullupTarget:"Wide grip 8-14 reps. Weighted close grip.",
+   gymFocus:"Add sets and load. Ladders and weighted pull-ups.",
+   boxFocus:"Power and combinations. 6-punch strings. Heavier bag work.",weeks:"Weeks 7-14"},
+  {name:"Peak",sessions:[41,60],color:"#f97316",badge:"🔥",
+   pullupTarget:"Wide grip 15-20 reps. Cluster sets. Max effort.",
+   gymFocus:"Cluster sets. Heavy weighted. Taper in final sessions.",
+   boxFocus:"Fight conditioning. Speed and power combined.",weeks:"Weeks 14-20"},
+];
+function getPhase(c){
+  if(!c||c<=20)return PHASES[0];
+  if(c<=40)return PHASES[1];
+  return PHASES[2];
+}
+
+const WT=[
+  {id:"gym",label:"Gym",icon:"🏋",color:"#e8ff47"},
+  {id:"punchBag",label:"Punch Bag",icon:"🥊",color:"#f87171"},
+  {id:"shadowBoxing",label:"Shadow Box",icon:"🥷",color:"#a78bfa"},
+  {id:"home",label:"Home",icon:"🏠",color:"#47d4ff"},
+  {id:"yoga",label:"Yoga",icon:"🧘",color:"#34d399"},
+  {id:"rest",label:"Rest",icon:"🌿",color:"#94a3b8"},
+];
+
+function Sparkline({data,color,height}){
+  color=color||"#e8ff47";height=height||48;
+  if(!data||data.length<2)return null;
+  const max=Math.max(...data,1),w=300,h=height,pad=4;
+  const xs=data.map((_,i)=>pad+(i/(data.length-1))*(w-pad*2));
+  const ys=data.map(v=>h-pad-(v/max)*(h-pad*2));
+  const path=xs.map((x,i)=>(i===0?"M":"L")+x.toFixed(1)+","+ys[i].toFixed(1)).join(" ");
+  const area=path+" L"+xs[xs.length-1].toFixed(1)+","+h+" L"+xs[0].toFixed(1)+","+h+" Z";
+  return (<svg viewBox={"0 0 "+w+" "+h} style={{width:"100%",height,display:"block"}} preserveAspectRatio="none">
+    <path d={area} fill={color+"18"}/><path d={path} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
+    {xs.map((x,i)=><circle key={i} cx={x} cy={ys[i]} r="3" fill={color}/>)}
+  </svg>);
+}
+
+function Card({session,color,onComplete,completed}){
+  const [open,setOpen]=useState(false);
+  if(!session)return null;
+  const ac=color||"#e8ff47";
+  const label=session._label||session.l||session.label||"Session";
+  const dur=session.dur||session.duration||"";
+  const exercises=session.e||session.exercises||[];
+  const warmup=session.w||session.warmup||[];
+  const cooldown=session.c||session.cool||session.cooldown||[];
+  const rounds=session.rounds||[];
+  const seq=session.seq||session.sequence||[];
+  const opts=session.opts||session.options||[];
+  const cues=session.cues||[];
+  const pu=session.pu||session.pullup||null;
+  return (
+    <div style={{background:"#141414",border:"1px solid "+ac+"33",borderRadius:12,overflow:"hidden",marginBottom:12}}>
+      <div onClick={()=>setOpen(!open)} style={{padding:"12px 14px",cursor:"pointer",background:"linear-gradient(135deg,"+ac+"11,transparent)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+          <div style={{flex:1}}>
+            <div style={{color:"#fff",fontWeight:700,fontSize:13}}>{label}</div>
+            {dur&&<div style={{color:"#555",fontSize:10,marginTop:2}}>⏱ {dur}</div>}
+            {pu&&<div style={{color:ac,fontSize:10,marginTop:4,fontWeight:600}}>🔱 {pu.t||pu.target}</div>}
+          </div>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            {completed&&<span style={{color:"#a8ff87",fontSize:12}}>✓</span>}
+            <span style={{color:ac,fontSize:14}}>{open?"▲":"▼"}</span>
+          </div>
+        </div>
+      </div>
+      {open&&(
+        <div style={{padding:"0 14px 14px"}}>
+          {pu&&<div style={{marginTop:10,padding:"8px 10px",background:ac+"11",border:"1px solid "+ac+"22",borderRadius:8}}>
+            <div style={{color:ac,fontWeight:700,fontSize:10,marginBottom:3}}>🔱 PULL-UP WORK THIS SESSION</div>
+            <div style={{color:"#ddd",fontSize:12}}>{pu.t||pu.target}</div>
+            <div style={{color:"#888",fontSize:11,marginTop:3}}>💡 {pu.n||pu.note}</div>
+          </div>}
+          {warmup.length>0&&<div style={{marginTop:10}}>
+            <div style={{color:"#facc15",fontWeight:700,fontSize:10,marginBottom:5,textTransform:"uppercase",letterSpacing:1}}>🔥 Warm-Up</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+              {warmup.map((x,i)=><span key={i} style={{background:"#1a1a1a",color:"#aaa",borderRadius:5,padding:"3px 7px",fontSize:10}}>{x}</span>)}
+            </div>
+          </div>}
+          {exercises.length>0&&<div style={{marginTop:12}}>
+            <div style={{color:ac,fontWeight:700,fontSize:10,marginBottom:6,textTransform:"uppercase",letterSpacing:1}}>💪 Exercises</div>
+            {exercises.map((ex,i)=>(
+              <div key={i} style={{padding:"6px 9px",background:"#0a0a0a",borderRadius:7,borderLeft:"3px solid "+ac,marginBottom:5}}>
+                <div style={{display:"flex",justifyContent:"space-between"}}>
+                  <span style={{color:"#ddd",fontWeight:600,fontSize:12}}>{ex.n||ex.name}</span>
+                  <span style={{color:ac,fontSize:11,fontWeight:700}}>{ex.s||ex.sets}</span>
+                </div>
+                <div style={{color:"#666",fontSize:10,marginTop:2}}>💡 {ex.no||ex.note}</div>
+              </div>
+            ))}
+          </div>}
+          {rounds.length>0&&<div style={{marginTop:12}}>
+            <div style={{color:ac,fontWeight:700,fontSize:10,marginBottom:6,textTransform:"uppercase",letterSpacing:1}}>🥊 Rounds</div>
+            {rounds.map((r,i)=>(
+              <div key={i} style={{display:"flex",gap:8,padding:"6px 9px",background:"#0a0a0a",borderRadius:7,borderLeft:"3px solid "+ac,marginBottom:5}}>
+                <span style={{color:ac,fontWeight:700,minWidth:16,fontSize:11}}>{r.r}</span>
+                <div><div style={{color:"#ddd",fontSize:12}}>{r.focus}</div><div style={{color:"#555",fontSize:10}}>{r.dur} · Rest {r.rest}</div></div>
+              </div>
+            ))}
+          </div>}
+          {seq.length>0&&<div style={{marginTop:12}}>
+            <div style={{color:ac,fontWeight:700,fontSize:10,marginBottom:6,textTransform:"uppercase",letterSpacing:1}}>🧘 Sequence</div>
+            {seq.map((p,i)=>(
+              <div key={i} style={{padding:"5px 9px",background:"#0a0a0a",borderRadius:7,borderLeft:"3px solid "+ac,marginBottom:5}}>
+                <div style={{display:"flex",justifyContent:"space-between"}}>
+                  <span style={{color:"#ddd",fontSize:12,fontWeight:600}}>{p.p||p.pose}</span>
+                  <span style={{color:ac,fontSize:11}}>{p.d||p.dur}</span>
+                </div>
+                <div style={{color:"#666",fontSize:10}}>{p.b||p.benefit}</div>
+              </div>
+            ))}
+            {session.bw&&<div style={{color:"#888",fontSize:11,marginTop:6,fontStyle:"italic"}}>🫁 {session.bw}</div>}
+          </div>}
+          {opts.length>0&&<div style={{marginTop:12}}>
+            <div style={{color:ac,fontWeight:700,fontSize:10,marginBottom:6,textTransform:"uppercase",letterSpacing:1}}>🌿 Recovery (pick 1-2)</div>
+            {opts.map((o,i)=><div key={i} style={{padding:"6px 9px",background:"#0a0a0a",borderRadius:7,borderLeft:"3px solid "+ac,marginBottom:5,color:"#ddd",fontSize:12}}>→ {o}</div>)}
+            {session.avoid&&<div style={{marginTop:6,padding:"6px 9px",background:"#1a0a0a",borderRadius:7}}>
+              <div style={{color:"#f87171",fontSize:10,fontWeight:700,marginBottom:3}}>⛔ Avoid</div>
+              {session.avoid.map((a,i)=><div key={i} style={{color:"#fca5a5",fontSize:10}}>• {a}</div>)}
+            </div>}
+            {session.nudge&&<div style={{color:ac,fontSize:11,marginTop:6,fontStyle:"italic"}}>📲 {session.nudge}</div>}
+          </div>}
+          {cues.length>0&&<div style={{marginTop:10,padding:"8px 9px",background:"#1a1a1a",borderRadius:7}}>
+            <div style={{color:"#facc15",fontWeight:700,fontSize:10,marginBottom:4}}>⚠ Technical Cues</div>
+            {cues.map((c,i)=><div key={i} style={{color:"#aaa",fontSize:11}}>• {c}</div>)}
+          </div>}
+          {cooldown.length>0&&<div style={{marginTop:10}}>
+            <div style={{color:"#818cf8",fontWeight:700,fontSize:10,marginBottom:4,textTransform:"uppercase",letterSpacing:1}}>❄ Cool-Down</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+              {cooldown.map((x,i)=><span key={i} style={{background:"#1a1a1a",color:"#a5b4fc",borderRadius:5,padding:"3px 7px",fontSize:10}}>{x}</span>)}
+            </div>
+          </div>}
+          {onComplete&&<button onClick={onComplete}
+            style={{width:"100%",marginTop:14,background:completed?"#a8ff8722":"#e8ff4722",border:"1px solid "+(completed?"#a8ff87":"#e8ff47"),borderRadius:8,padding:"10px",color:completed?"#a8ff87":"#e8ff47",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",letterSpacing:1}}>
+            {completed?"✓ SESSION LOGGED":"MARK SESSION COMPLETE"}
+          </button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Setup({onSave}){
+  const [key,setKey]=useState("");
+  const [err,setErr]=useState("");
+  function submit(){
+    const k=key.trim().toLowerCase().replace(/\s+/g,"-");
+    if(k.length<4){setErr("Key must be at least 4 characters.");return;}
+    localStorage.setItem("forge_userkey",k);onSave(k);
+  }
+  return (<div style={{minHeight:"100vh",background:"#0e0e0e",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px 24px"}}>
+    <div style={{fontSize:"9px",letterSpacing:"4px",color:"#bbb",marginBottom:"6px"}}>DAILY PERFORMANCE SYSTEM</div>
+    <div style={{fontSize:"28px",fontWeight:"800",color:"#e8ff47",letterSpacing:"-1px",marginBottom:"32px"}}>FORGE PROTOCOL</div>
+    <div style={{width:"100%",maxWidth:"400px",background:"#141414",borderRadius:"12px",padding:"24px"}}>
+      <div style={{fontSize:"14px",color:"#fff",fontWeight:"700",marginBottom:"8px"}}>Your personal key</div>
+      <div style={{fontSize:"11px",color:"#999",lineHeight:"1.6",marginBottom:"20px"}}>Syncs your data across all devices. Try <span style={{color:"#e8ff47"}}>forgeprotocol</span></div>
+      <input type="text" value={key} onChange={e=>{setKey(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&submit()} placeholder="your-personal-key"
+        style={{width:"100%",background:"#0e0e0e",border:"1px solid #333",color:"#e8ff47",fontSize:"16px",fontWeight:"700",padding:"12px 14px",borderRadius:"8px",outline:"none",marginBottom:"8px",letterSpacing:"1px"}}/>
+      {err&&<div style={{fontSize:"11px",color:"#ff4747",marginBottom:"8px"}}>{err}</div>}
+      <button onClick={submit} style={{width:"100%",background:"#e8ff47",color:"#080808",border:"none",borderRadius:"8px",padding:"14px",fontSize:"13px",fontWeight:"800",letterSpacing:"2px",cursor:"pointer"}}>START FORGE PROTOCOL</button>
+    </div>
+  </div>);
+}
+
+function App(){
+  const [userKey,setUserKey]=useState(()=>localStorage.getItem("forge_userkey")||"");
+  const [weekData,setWeekDataRaw]=useState({});
+  const [allWeeks,setAllWeeks]=useState([]);
+  const [pullupLogs,setPullupLogsRaw]=useState([]);
+  const [prog,setProgRaw]=useState({gym_count:0,boxing_count:0,home_count:0,yoga_count:0,rest_count:0,session_log:[]});
+  const [tab,setTab]=useState("today");
+  const [selDay,setSelDay]=useState(getTodayIdx());
+  const [selWeekId,setSelWeekId]=useState(getWeekId());
+  const [expandedHabit,setExpandedHabit]=useState(null);
+  const [expandedLog,setExpandedLog]=useState(null);
+  const [progView,setProgView]=useState("overview");
+  const [puInput,setPuInput]=useState("");
+  const [syncing,setSyncing]=useState(false);
+  const [syncSt,setSyncSt]=useState("");
+  const [todayWT,setTodayWT]=useState(null);
+  const ref=useRef(null);
+  const weekId=getWeekId(),todayIdx=getTodayIdx(),todayFull=FULL_DAYS[todayIdx];
+  const todayStr=new Date().toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+
+  useEffect(()=>{
+    if(!userKey)return;
+    // Load progress from localStorage immediately (instant, no flicker)
+    const localProg = localStorage.getItem("forge_progress_"+userKey);
+    if(localProg){try{setProgRaw(JSON.parse(localProg));}catch(e){}}
+    (async()=>{
+      setSyncing(true);
+      try{
+        const wr=await sbGetWeek(userKey,weekId);
+        if(wr.length>0)setWeekDataRaw(wr[0].data||{});
+        const ar=await sbGet("forge_logs",userKey);setAllWeeks(ar);
+        const pr=await sbGet("forge_pullups",userKey);
+        if(pr.length>0)setPullupLogsRaw(pr[0].logs||[]);
+        // Try forge_progress table — may not exist yet, localStorage is the fallback
+        try{
+          const pgr=await sbGet("forge_progress",userKey);
+          if(pgr.length>0){
+            const sbProg=pgr[0].data||{};
+            // Use whichever has higher gym_count (more authoritative)
+            const localP=localProg?JSON.parse(localProg):{};
+            const merged=(sbProg.gym_count||0)>=(localP.gym_count||0)?sbProg:localP;
+            setProgRaw(merged);
+            localStorage.setItem("forge_progress_"+userKey,JSON.stringify(merged));
+          }
+        }catch(e){}
+      }catch(e){}
+      setSyncing(false);
+    })();
+  },[userKey]);
+
+  function syncW(data){clearTimeout(ref.current);ref.current=setTimeout(async()=>{try{await sbUpsert("forge_logs",{key:userKey,week_id:weekId,data,updated_at:new Date().toISOString()});const ar=await sbGet("forge_logs",userKey);setAllWeeks(ar);setSyncSt("saved");setTimeout(()=>setSyncSt(""),2000);}catch(e){setSyncSt("error");}},800);}
+  function syncPU(logs){clearTimeout(ref.current);ref.current=setTimeout(async()=>{try{await sbUpsert("forge_pullups",{key:userKey,logs,updated_at:new Date().toISOString()});setSyncSt("saved");setTimeout(()=>setSyncSt(""),2000);}catch(e){setSyncSt("error");}},800);}
+  function syncPG(p){
+    // Always save to localStorage immediately
+    localStorage.setItem("forge_progress_"+userKey,JSON.stringify(p));
+    clearTimeout(ref.current);ref.current=setTimeout(async()=>{
+      try{
+        await sbUpsert("forge_progress",{key:userKey,data:p,updated_at:new Date().toISOString()});
+        setSyncSt("saved");setTimeout(()=>setSyncSt(""),2000);
+      }catch(e){
+        // Supabase failed (table may not exist) but localStorage saved it
+        setSyncSt("local");setTimeout(()=>setSyncSt(""),2000);
+      }
+    },800);
+  }
+
+  function setWD(upd){setWeekDataRaw(prev=>{const next=typeof upd==="function"?upd(prev):upd;syncW(next);return next;});}
+  function setPU(upd){setPullupLogsRaw(prev=>{const next=typeof upd==="function"?upd(prev):upd;syncPU(next);return next;});}
+  function setProg(upd){setProgRaw(prev=>{const next=typeof upd==="function"?upd(prev):upd;syncPG(next);return next;});}
+  function toggle(day,k){setWD(prev=>{const d=prev[day]||{};return {...prev,[day]:{...d,[k]:!d[k]}};});}
+
+  function completeSession(type){
+    // Only log once per day per type
+    if(td.workout_done && td.workout_type===type) return;
+    const ck=(type==="punchBag"||type==="shadowBoxing")?"boxing_count":type==="yoga"?"yoga_count":type==="rest"?"rest_count":type==="home"?"home_count":"gym_count";
+    const countBefore=(prog[ck]||0);
+    const sessionNumUsed=countBefore+1;
+    const gymS=getGymSession(sessionNumUsed);
+    const sid=type==="gym"?(gymS||{}).id||"gym":type;
+    setProg(prev=>{
+      const lg={date:new Date().toLocaleDateString("en-GB"),type,sessionId:sid,countUsed:sessionNumUsed,ts:Date.now()};
+      return {...prev,[ck]:(prev[ck]||0)+1,session_log:[...(prev.session_log||[]),lg].slice(-200)};
+    });
+    // Store which session number was shown when logged, so we can replay it
+    setWD(prev=>{const d=prev[todayFull]||{};return {...prev,[todayFull]:{...d,workout_done:true,workout_type:type,session_num_used:sessionNumUsed}};});
+  }
+
+  function getSession(type){
+    // If already completed today for this type, show the session that was actually done
+    const alreadyDoneToday = td.workout_done && td.workout_type===type;
+    const storedNum = td.session_num_used;
+    if(type==="gym"){
+      if(alreadyDoneToday && storedNum) return getGymSession(storedNum);
+      return getGymSession((prog.gym_count||0)+1);
+    }
+    const ck=(type==="punchBag"||type==="shadowBoxing")?"boxing_count":type==="yoga"?"yoga_count":type==="rest"?"rest_count":"home_count";
+    const count = alreadyDoneToday && storedNum ? storedNum-1 : (prog[ck]||0);
+    if(type==="punchBag")return getBoxingSession(count,"punchBag");
+    if(type==="shadowBoxing")return getBoxingSession(count,"shadow");
+    if(type==="home")return getHomeSession(count);
+    if(type==="yoga")return getYogaSession(count);
+    if(type==="rest")return getRestSession(count);
+    return null;
+  }
+
+  function dayScore(day){
+    const d=weekData[day]||{};
+    const total=HABITS.length+1,done=[d.workout_done,...HABITS.map(h=>d[h.id])].filter(Boolean).length;
+    return {done,total,pct:total?Math.round((done/total)*100):0};
+  }
+  function weekScore(){let t=0,d=0;FULL_DAYS.forEach(f=>{const s=dayScore(f);t+=s.total;d+=s.done;});return t?Math.round((d/t)*100):0;}
+  function logPU(){const v=parseInt(puInput);if(!v||v<0)return;setPU(prev=>[...prev,{date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}),reps:v,ts:Date.now()}].slice(-60));setPuInput("");}
+
+  const td=weekData[todayFull]||{};
+  // Auto-select today's workout type if already logged
+  useEffect(()=>{
+    if(td.workout_type && !todayWT){
+      setTodayWT(td.workout_type);
+    }
+  },[td.workout_type]);
+  const ws=weekScore(),ts=dayScore(todayFull);
+  const rec=getTodayRec(),phase=getPhase(prog.gym_count);
+  const bestPU=pullupLogs.length?Math.max(...pullupLogs.map(l=>l.reps)):0;
+
+  const S=t=>({background:tab===t?"#e8ff47":"transparent",color:tab===t?"#080808":"#999",border:"1px solid "+(tab===t?"#e8ff47":"#2a2a2a"),padding:"5px 9px",borderRadius:"4px",fontSize:"9px",letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer",fontFamily:"inherit",fontWeight:tab===t?"800":"400"});
+  const CB=(c,col)=>{col=col||"#a8ff87";return(<div style={{width:"18px",height:"18px",borderRadius:"3px",flexShrink:0,border:"2px solid "+(c?col:"#888"),background:c?col:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>{c&&<span style={{color:"#080808",fontSize:"10px",fontWeight:"800"}}>✓</span>}</div>);};
+  const LBL=t=><div style={{fontSize:"9px",color:"#ddd",letterSpacing:"3px",marginBottom:"10px",marginTop:"4px"}}>{t}</div>;
+  const CARD=(ch,ex)=>{ex=ex||{};return(<div style={{background:"#141414",border:"1px solid #2a2a2a",borderRadius:"10px",padding:"14px 16px",marginBottom:"10px",...ex}}>{ch}</div>);};
+  const STAT=(l,v,s,c)=>{c=c||"#e8ff47";return(<div style={{background:"#141414",border:"1px solid "+c+"20",borderTop:"2px solid "+c,borderRadius:"8px",padding:"10px 12px",flex:1}}><div style={{fontSize:"9px",color:"#999",letterSpacing:"2px",marginBottom:"4px"}}>{l}</div><div style={{fontSize:"18px",fontWeight:"800",color:c,letterSpacing:"-1px"}}>{v}</div>{s&&<div style={{fontSize:"9px",color:"#777",marginTop:"2px"}}>{s}</div>}</div>);};
+
+  if(!userKey)return <Setup onSave={setUserKey}/>;
+
+  return (
+    <div style={{minHeight:"100vh",background:"#0e0e0e",color:"#fff",fontFamily:"'DM Mono','Courier New',monospace",paddingBottom:"env(safe-area-inset-bottom)"}}>
+      <div style={{background:"#0e0e0e",borderBottom:"1px solid #1c1c1c",padding:"16px 16px 10px",position:"sticky",top:0,zIndex:100,paddingTop:"calc(16px + env(safe-area-inset-top))"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"10px"}}>
+          <div>
+            <div style={{fontSize:"9px",letterSpacing:"4px",color:"#bbb"}}>DAILY PERFORMANCE SYSTEM</div>
+            <div style={{fontSize:"20px",fontWeight:"800",color:"#e8ff47",letterSpacing:"-1px"}}>FORGE PROTOCOL</div>
+          </div>
+          <div style={{textAlign:"right",display:"flex",flexDirection:"column",alignItems:"flex-end",gap:"2px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:"6px"}}>
+              {syncSt==="saved"&&<span style={{fontSize:"8px",color:"#a8ff87"}}>synced</span>}
+              {syncSt==="local"&&<span style={{fontSize:"8px",color:"#facc15"}}>local</span>}
+              {syncSt==="error"&&<span style={{fontSize:"8px",color:"#ff4747"}}>error</span>}
+              {syncing&&<span style={{fontSize:"8px",color:"#888"}}>syncing</span>}
+              <div style={{fontSize:"8px",color:"#555"}}>key: {userKey}</div>
+            </div>
+            <div style={{display:"flex",alignItems:"baseline",gap:"4px"}}>
+              <div style={{fontSize:"8px",color:"#ccc",letterSpacing:"2px"}}>WEEK</div>
+              <div style={{fontSize:"26px",fontWeight:"800",color:SC(ws),letterSpacing:"-2px",lineHeight:1}}>{ws}%</div>
+            </div>
+          </div>
+        </div>
+        <div style={{background:"#0f0a00",border:"1px solid #ff780430",borderRadius:"6px",padding:"7px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}}>
+          <div>
+            <div style={{fontSize:"8px",color:"#ff7847",letterSpacing:"2px"}}>🪔 DIWALI — 20 PULL-UPS</div>
+            <div style={{fontSize:"11px",color:"#ddd",marginTop:"2px"}}>Gym session {prog.gym_count}/60 · {phase.name}</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:"20px",fontWeight:"800",color:"#ff7847",letterSpacing:"-1px"}}>{DAYS_TO_DIWALI}</div>
+            <div style={{fontSize:"8px",color:"#bb9977"}}>DAYS LEFT</div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:"4px",flexWrap:"wrap"}}>
+          {["today","week","pullups","progress","logs","diwali","habits"].map(t=><button key={t} onClick={()=>setTab(t)} style={S(t)}>{t}</button>)}
+        </div>
+      </div>
+
+      <div style={{padding:"16px",maxWidth:"560px",margin:"0 auto"}}>
+
+        {tab==="today"&&(
+          <div>
+            {CARD(<>
+              <div style={{fontSize:"9px",color:"#ddd",letterSpacing:"3px",marginBottom:"4px"}}>TODAY</div>
+              <div style={{fontSize:"15px",fontWeight:"700",color:"#fff"}}>{todayStr}</div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:"8px"}}>
+                <div>
+                  <div style={{fontSize:"11px",color:phase.color,fontWeight:600}}>{phase.badge} {phase.name} · Gym {prog.gym_count}/60</div>
+                  <div style={{fontSize:"10px",color:"#555",marginTop:"2px"}}>{rec.note}</div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:"22px",fontWeight:"800",color:SC(ts.pct)}}>{ts.pct}%</div>
+                  <div style={{fontSize:"9px",color:"#555"}}>{ts.done}/{ts.total}</div>
+                </div>
+              </div>
+            </>)}
+            {LBL("SELECT TODAY'S WORKOUT")}
+            <div style={{background:"#0d0d0d",border:"1px solid #2a2a2a",borderRadius:8,padding:"8px 12px",marginBottom:10,display:"flex",gap:12,alignItems:"center"}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:9,color:"#555",letterSpacing:1,marginBottom:2}}>NEXT GYM SESSION</div>
+                <div style={{fontSize:11,color:"#e8ff47",fontWeight:700}}>{(getGymSession((prog.gym_count||0)+1)||{})._label||"Session A1"}</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:9,color:"#555",letterSpacing:1,marginBottom:2}}>SESSION</div>
+                <div style={{fontSize:14,color:"#e8ff47",fontWeight:700}}>{(prog.gym_count||0)+1}/60</div>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7,marginBottom:14}}>
+              {WT.map(wt=>{
+                const active=todayWT===wt.id,isRec=wt.id===rec.primary;
+                return (<div key={wt.id} onClick={()=>setTodayWT(active?null:wt.id)}
+                  style={{position:"relative",background:active?wt.color+"22":"#0d0d0d",border:"1px solid "+(active?wt.color:isRec?wt.color+"55":"#2a2a2a"),borderRadius:9,padding:"10px 4px",cursor:"pointer",textAlign:"center"}}>
+                  {isRec&&!active&&<div style={{position:"absolute",top:-5,right:-3,background:wt.color,color:"#000",fontSize:7,fontWeight:800,padding:"1px 5px",borderRadius:4}}>REC</div>}
+                  <div style={{fontSize:20}}>{wt.icon}</div>
+                  <div style={{color:active?wt.color:isRec?wt.color:"#666",fontSize:9,fontWeight:active||isRec?700:400,marginTop:3}}>{wt.label}</div>
+                </div>);
+              })}
+            </div>
+            {todayWT&&(()=>{
+              const session=getSession(todayWT);
+              const wt=WT.find(w=>w.id===todayWT);
+              const done=td.workout_done&&td.workout_type===todayWT;
+              return session?<Card session={session} color={wt?wt.color:"#e8ff47"} completed={done} onComplete={()=>completeSession(todayWT)}/>:null;
+            })()}
+            {!todayWT&&<div style={{textAlign:"center",padding:"20px",color:"#444",background:"#0a0a0a",borderRadius:10,border:"1px solid #1a1a1a",marginBottom:12}}>
+              <div style={{fontSize:24,marginBottom:6}}>☝</div>
+              <div style={{fontSize:11,color:"#555"}}>Select a workout type above. REC badge shows today's recommended session.</div>
+            </div>}
+            {LBL("DAILY HABITS")}
+            {HABITS.map(h=>(
+              <div key={h.id} onClick={()=>toggle(todayFull,h.id)}
+                style={{background:td[h.id]?"#a8ff8710":"#0d0d0d",border:"1px solid "+(td[h.id]?"#a8ff8760":"#2a2a2a"),borderRadius:"7px",padding:"10px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:"10px",marginBottom:"7px"}}>
+                {CB(td[h.id])}<span style={{fontSize:"14px"}}>{h.icon}</span>
+                <span style={{fontSize:"12px",color:td[h.id]?"#a8ff87":"#ccc"}}>{h.title}</span>
+              </div>
+            ))}
+            {LBL("TODAY'S NOTE")}
+            <div style={{background:"#0d0d0d",border:"1px solid #2a2a2a",borderRadius:"8px",padding:"12px 14px",marginBottom:"8px"}}>
+              <textarea placeholder="Energy level, what felt good, what was hard..."
+                value={td.note||""}
+                style={{width:"100%",minHeight:"80px",background:"transparent",border:"none",outline:"none",resize:"vertical",color:"#fff",fontSize:"13px",lineHeight:"1.6",fontFamily:"inherit",boxSizing:"border-box"}}
+                onChange={e=>setWD(prev=>{const d=prev[todayFull]||{};return {...prev,[todayFull]:{...d,note:e.target.value}};})}/>
+            </div>
+          </div>
+        )}
+
+        {tab==="week"&&(()=>{
+          const allIds=[...new Set([weekId,...allWeeks.map(r=>r.week_id)])].sort().reverse();
+          const isCW=selWeekId===weekId;
+          const wd=isCW?weekData:((allWeeks.find(r=>r.week_id===selWeekId)||{}).data||{});
+          const sf=FULL_DAYS[selDay]||"Monday";
+          const sd=wd[sf]||{};
+          const sdTotal=HABITS.length+1,sdDone=[sd.workout_done,...HABITS.map(h=>sd[h.id])].filter(Boolean).length,sdPct=sdTotal?Math.round((sdDone/sdTotal)*100):0;
+          const sdWt=WT.find(w=>w.id===sd.workout_type);
+          const dayR=DAY_REC[sf]||DAY_REC["Sunday"];
+          return (
+            <div>
+              {allIds.length>1&&<div style={{display:"flex",gap:"6px",overflowX:"auto",marginBottom:"14px",paddingBottom:"4px"}}>
+                {allIds.map(wid=>{const d=new Date(wid),label=wid===weekId?"This week":`${d.toLocaleString("default",{month:"short"})} ${d.getDate()}`,isSel=wid===selWeekId;
+                  return <div key={wid} onClick={()=>setSelWeekId(wid)} style={{flexShrink:0,padding:"6px 12px",borderRadius:"6px",cursor:"pointer",fontSize:"10px",fontWeight:isSel?"700":"400",border:"1px solid "+(isSel?"#e8ff47":"#2a2a2a"),background:isSel?"#e8ff4715":"#0a0a0a",color:isSel?"#e8ff47":"#777"}}>{label}</div>;
+                })}
+              </div>}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"5px",marginBottom:"14px"}}>
+                {DAYS.map((d,i)=>{
+                  const f=FULL_DAYS[i],dd=wd[f]||{};
+                  const total=HABITS.length+1,done=[dd.workout_done,...HABITS.map(h=>dd[h.id])].filter(Boolean).length,pct=total?Math.round((done/total)*100):0;
+                  const isToday=i===todayIdx&&selWeekId===weekId,isSel=i===selDay;
+                  const wt=WT.find(w=>w.id===dd.workout_type);
+                  return <div key={d} onClick={()=>setSelDay(i)} style={{background:isSel?"#242424":"#0a0a0a",border:"1px solid "+(isSel?(wt?wt.color:"#e8ff47"):isToday?"#444":"#242424"),borderRadius:"8px",padding:"8px 4px",cursor:"pointer",textAlign:"center"}}>
+                    <div style={{fontSize:"8px",color:isToday?"#e8ff47":"#999",marginBottom:"3px"}}>{d}{isToday?"●":""}</div>
+                    <div style={{fontSize:"14px",marginBottom:"3px"}}>{wt?wt.icon:"—"}</div>
+                    <div style={{fontSize:"11px",fontWeight:"700",color:SC(pct)}}>{done>0?`${pct}%`:"—"}</div>
+                  </div>;
+                })}
+              </div>
+              {CARD(<>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                  <div>
+                    <div style={{fontSize:"15px",fontWeight:"700",color:"#fff"}}>{sf}</div>
+                    <div style={{fontSize:"10px",color:"#555",marginTop:2}}>{dayR.note}</div>
+                  </div>
+                  <div style={{fontSize:"22px",fontWeight:"800",color:SC(sdPct)}}>{sdDone>0?`${sdPct}%`:"—"}</div>
+                </div>
+                {sd.workout_done&&sdWt&&<div style={{background:sdWt.color+"18",border:"1px solid "+sdWt.color+"33",borderRadius:7,padding:"7px 10px",marginBottom:8}}>
+                  <div style={{fontSize:10,color:sdWt.color,fontWeight:700}}>{sdWt.icon} {sdWt.label} — Completed ✓</div>
+                </div>}
+                {LBL("HABITS")}
+                {HABITS.map(h=>{
+                  const handleH=()=>{if(isCW)toggle(sf,h.id);};
+                  return <div key={h.id} onClick={handleH}
+                    style={{background:sd[h.id]?"#a8ff8708":"#0a0a0a",border:"1px solid "+(sd[h.id]?"#a8ff8755":"#242424"),borderRadius:"6px",padding:"9px 14px",cursor:isCW?"pointer":"default",display:"flex",alignItems:"center",gap:"10px",marginBottom:"6px"}}>
+                    {CB(sd[h.id])}<span style={{fontSize:"12px"}}>{h.icon}</span>
+                    <span style={{fontSize:"11px",color:sd[h.id]?"#a8ff87":"#999"}}>{h.title}</span>
+                  </div>;
+                })}
+                {sd.note&&<div style={{marginTop:8,padding:"8px 10px",background:"#0a0a0a",borderRadius:7}}>
+                  <div style={{fontSize:9,color:"#555",marginBottom:3}}>NOTE</div>
+                  <div style={{fontSize:12,color:"#888",fontStyle:"italic"}}>"{sd.note}"</div>
+                </div>}
+                {!isCW&&<div style={{fontSize:10,color:"#444",marginTop:8}}>Past week — view only</div>}
+              </>)}
+            </div>
+          );
+        })()}
+
+        {tab==="pullups"&&(
+          <div>
+            <div style={{background:"linear-gradient(135deg,#100800,#1a0d00)",border:"1px solid #ff780430",borderRadius:"12px",padding:"20px 18px",marginBottom:"16px",textAlign:"center"}}>
+              <div style={{fontSize:"9px",color:"#ff7847",letterSpacing:"3px",marginBottom:"6px"}}>🪔 DIWALI — 20 REPS WIDE GRIP</div>
+              <div style={{fontSize:"42px",fontWeight:"800",color:"#fff",letterSpacing:"-3px",lineHeight:1}}>{DAYS_TO_DIWALI}</div>
+              <div style={{fontSize:"11px",color:"#775533",marginTop:"2px"}}>days left · November 8 2026</div>
+              <div style={{fontSize:"11px",color:"#888",marginTop:"3px"}}>Start: 1 wide grip, 5 close grip</div>
+              <div style={{marginTop:"14px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:"10px",color:"#553322",marginBottom:"4px"}}>
+                  <span>Start: 1</span><span style={{color:bestPU>0?"#ff7847":"#553322"}}>Best: {bestPU}</span><span>Goal: 20</span>
+                </div>
+                <div style={{background:"#1a0a00",borderRadius:"100px",height:"8px",overflow:"hidden"}}>
+                  <div style={{height:"100%",borderRadius:"100px",background:"linear-gradient(90deg,#ff7847,#ffcc00)",width:Math.min(100,Math.round((bestPU/20)*100))+"%",transition:"width 0.5s"}}/>
+                </div>
+              </div>
+            </div>
+            <div style={{background:"#141414",border:"1px solid #2a2a2a",borderRadius:"8px",padding:"14px 16px",marginBottom:"14px"}}>
+              <div style={{fontSize:"11px",color:"#aaa",marginBottom:"10px"}}>Log best wide grip set from gym session:</div>
+              <div style={{display:"flex",gap:"8px"}}>
+                <input type="number" value={puInput} onChange={e=>setPuInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&logPU()} placeholder="reps"
+                  style={{flex:1,background:"#0e0e0e",border:"1px solid #333",color:"#e8ff47",fontSize:"20px",fontWeight:"700",padding:"8px 12px",borderRadius:"6px",outline:"none",fontFamily:"inherit"}}/>
+                <button onClick={logPU} style={{background:"#e8ff47",color:"#080808",border:"none",borderRadius:"6px",padding:"8px 20px",fontSize:"11px",fontWeight:"800",fontFamily:"inherit",cursor:"pointer"}}>LOG</button>
+              </div>
+            </div>
+            {pullupLogs.length>0&&<div style={{background:"#141414",border:"1px solid #2a2a2a",borderRadius:"10px",padding:"14px 16px",marginBottom:"12px"}}>
+              <Sparkline data={pullupLogs.map(l=>l.reps)} color="#ff7847" height={60}/>
+              <div style={{marginTop:"10px"}}>
+                {[...pullupLogs].reverse().slice(0,15).map((log,i)=>{
+                  const pct=Math.min(100,Math.round((log.reps/20)*100)),isMax=log.reps===bestPU;
+                  return <div key={i} style={{display:"flex",alignItems:"center",gap:"10px",padding:"5px 0",borderBottom:i<14?"1px solid #1a1a1a":"none"}}>
+                    <div style={{width:"54px",fontSize:"10px",color:"#888"}}>{log.date}</div>
+                    <div style={{flex:1,background:"#0e0e0e",borderRadius:"100px",height:"5px",overflow:"hidden"}}>
+                      <div style={{height:"100%",borderRadius:"100px",background:isMax?"#ff7847":"#e8ff4755",width:pct+"%"}}/>
+                    </div>
+                    <div style={{width:"32px",fontSize:"13px",fontWeight:"700",color:isMax?"#ff7847":"#ccc",textAlign:"right"}}>{log.reps}{isMax&&<span style={{fontSize:"8px"}}> ★</span>}</div>
+                  </div>;
+                })}
+              </div>
+            </div>}
+            <div style={{background:"#141414",border:"1px solid #2a2a2a",borderRadius:10,padding:"14px 16px"}}>
+              <div style={{color:"#e8ff47",fontWeight:700,fontSize:12,marginBottom:10}}>📈 Pull-up progression in gym sessions</div>
+              {[{l:"Sessions 1-20",t:"3-8 wide grip reps",c:"#4ade80"},{l:"Sessions 21-40",t:"8-15 wide grip reps",c:"#facc15"},{l:"Sessions 41-60",t:"15-20 wide grip reps",c:"#f97316"}].map((row,i)=>(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:i<2?"1px solid #1a1a1a":"none"}}>
+                  <span style={{fontSize:11,color:"#666"}}>{row.l}</span><span style={{fontSize:11,color:row.c,fontWeight:700}}>{row.t}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {tab==="diwali"&&(
+          <div>
+            <div style={{background:"linear-gradient(135deg,#1a0800,#0f0a00)",border:"1px solid #f9731633",borderRadius:14,padding:"20px 16px",marginBottom:16,textAlign:"center"}}>
+              <div style={{fontSize:9,color:"#f97316",letterSpacing:3,marginBottom:4}}>DIWALI GOAL</div>
+              <div style={{fontSize:48,fontWeight:800,color:"#fff",letterSpacing:"-3px",lineHeight:1}}>{DAYS_TO_DIWALI}</div>
+              <div style={{fontSize:11,color:"#775533",marginTop:2}}>days until 8 November 2026</div>
+              <div style={{fontSize:15,color:"#f97316",fontWeight:700,marginTop:10}}>20 non-stop wide-grip pull-ups</div>
+              <div style={{marginTop:14}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#553322",marginBottom:4}}>
+                  <span>Session 0</span><span style={{color:"#f97316"}}>Session {prog.gym_count}/60</span><span>Session 60</span>
+                </div>
+                <div style={{background:"#1a0a00",borderRadius:100,height:8,overflow:"hidden"}}>
+                  <div style={{height:"100%",borderRadius:100,background:"linear-gradient(90deg,#f97316,#facc15)",width:Math.min(100,Math.round((prog.gym_count/60)*100))+"%",transition:"width 0.5s"}}/>
+                </div>
+                <div style={{fontSize:10,color:"#f9731688",marginTop:4}}>{Math.min(100,Math.round((prog.gym_count/60)*100))}% through programme</div>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,marginBottom:16}}>
+              {STAT("GYM",prog.gym_count+"/60","sessions",phase.color)}
+              {STAT("BEST PULL-UP",bestPU||"—","wide grip","#f97316")}
+              {STAT("BOXING",prog.boxing_count,"sessions","#f87171")}
+            </div>
+            {PHASES.map((ph,i)=>{
+              const total=ph.sessions[1]-ph.sessions[0]+1;
+              const done=Math.max(0,Math.min(total,(prog.gym_count||0)-ph.sessions[0]+1));
+              const isActive=(prog.gym_count||0)>=ph.sessions[0]-1&&(prog.gym_count||0)<ph.sessions[1];
+              const isDone=(prog.gym_count||0)>=ph.sessions[1];
+              return (
+                <div key={i} style={{background:"#141414",border:"1px solid "+(isActive?ph.color+"55":"#2a2a2a"),borderLeft:"3px solid "+(isDone?"#555":isActive?ph.color:"#2a2a2a"),borderRadius:10,padding:"14px 16px",marginBottom:10}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                    <div>
+                      <div style={{color:isDone?"#555":ph.color,fontWeight:800,fontSize:14}}>{ph.badge} {ph.name}</div>
+                      <div style={{color:"#555",fontSize:10,marginTop:1}}>{ph.weeks} · Sessions {ph.sessions[0]}-{ph.sessions[1]}</div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      {isDone&&<div style={{color:"#a8ff87",fontSize:11,fontWeight:700}}>COMPLETE ✓</div>}
+                      {isActive&&<div style={{color:ph.color,fontSize:11,fontWeight:700}}>ACTIVE NOW</div>}
+                      {!isDone&&!isActive&&<div style={{color:"#444",fontSize:11}}>UPCOMING</div>}
+                    </div>
+                  </div>
+                  {(isActive||isDone)&&<div style={{marginBottom:8}}>
+                    <div style={{background:"#0a0a0a",borderRadius:100,height:5,overflow:"hidden"}}>
+                      <div style={{height:"100%",borderRadius:100,background:ph.color,width:Math.min(100,Math.round((done/total)*100))+"%"}}/>
+                    </div>
+                    <div style={{fontSize:9,color:"#555",marginTop:3}}>{Math.min(total,done)}/{total} sessions</div>
+                  </div>}
+                  <div style={{fontSize:11,color:"#888",marginBottom:8}}>{ph.gymFocus}</div>
+                  <div style={{background:ph.color+"11",border:"1px solid "+ph.color+"22",borderRadius:7,padding:"7px 10px",marginBottom:6}}>
+                    <div style={{fontSize:9,color:ph.color,fontWeight:700,letterSpacing:1,marginBottom:2}}>🔱 PULL-UP TARGET</div>
+                    <div style={{fontSize:11,color:"#ddd"}}>{ph.pullupTarget}</div>
+                  </div>
+                  <div style={{fontSize:10,color:"#666"}}>🥊 {ph.boxFocus}</div>
+                </div>
+              );
+            })}
+            <div style={{background:"#141414",border:"1px solid #334155",borderRadius:10,padding:"14px 16px",marginBottom:12}}>
+              <div style={{color:"#e8ff47",fontWeight:700,fontSize:13,marginBottom:4}}>⚙️ Adjust session counters</div>
+              <div style={{fontSize:11,color:"#666",marginBottom:12}}>If your counter got out of sync, fix it here.</div>
+              {(()=>{
+                const counters = [
+                  {key:"gym_count",label:"Gym sessions",max:60,color:"#e8ff47"},
+                  {key:"boxing_count",label:"Boxing sessions",max:999,color:"#f87171"},
+                  {key:"home_count",label:"Home sessions",max:999,color:"#47d4ff"},
+                  {key:"yoga_count",label:"Yoga sessions",max:999,color:"#34d399"},
+                  {key:"rest_count",label:"Rest sessions",max:999,color:"#94a3b8"},
+                ];
+                return counters.map(ct=>(
+                  <div key={ct.key} style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                    <div style={{flex:1,fontSize:11,color:"#aaa"}}>{ct.label}</div>
+                    <button onClick={()=>setProg(prev=>({...prev,[ct.key]:Math.max(0,(prev[ct.key]||0)-1)}))}
+                      style={{background:"#1a1a1a",border:"1px solid #333",color:"#fff",borderRadius:6,padding:"4px 12px",cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>−</button>
+                    <div style={{width:32,textAlign:"center",color:ct.color,fontWeight:700,fontSize:14}}>{prog[ct.key]||0}</div>
+                    <button onClick={()=>setProg(prev=>({...prev,[ct.key]:Math.min(ct.max,(prev[ct.key]||0)+1)}))}
+                      style={{background:"#1a1a1a",border:"1px solid #333",color:"#fff",borderRadius:6,padding:"4px 12px",cursor:"pointer",fontSize:14,fontFamily:"inherit"}}>+</button>
+                  </div>
+                ));
+              })()}
+              <div style={{fontSize:10,color:"#444",marginTop:4}}>Changes save automatically to your cloud data.</div>
+            </div>
+
+            <div style={{background:"#141414",border:"1px solid #2a2a2a",borderRadius:10,padding:"14px 16px"}}>
+              <div style={{color:"#e8ff47",fontWeight:700,fontSize:13,marginBottom:10}}>📋 How the plan works</div>
+              {["3 gym sessions per week = 60 sessions over 20 weeks","Sessions rotate: Upper (A) → Lower (B) → Core (C) → repeat","Pull-up work in every Upper and Core session","Sessions 1-30: Foundation and Build loads","Sessions 31-60: Same structure, heavier weights and more sets","Next session is always ready — no manual tracking needed","Boxing counts separately — cycles Technique, Power, Conditioning"].map((r,i)=>(
+                <div key={i} style={{display:"flex",gap:8,marginBottom:6}}>
+                  <span style={{color:"#e8ff47",fontSize:11}}>{i+1}.</span>
+                  <span style={{color:"#888",fontSize:11}}>{r}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {tab==="progress"&&(()=>{
+          const history=allWeeks.map(row=>{
+            const data=row.data||{};let tc=0,dc=0,wd=0;
+            const hb={};HABITS_IDS.forEach(h=>{hb[h]=0;});
+            FULL_DAYS.forEach(day=>{const d=data[day]||{};tc+=HABITS.length+1;dc+=HABITS_IDS.filter(h=>d[h]).length+(d.workout_done?1:0);if(d.workout_done)wd++;HABITS_IDS.forEach(h=>{if(d[h])hb[h]++;});});
+            return {weekId:row.week_id,weekStart:new Date(row.week_id),score:tc?Math.round((dc/tc)*100):0,workoutDays:wd,hb};
+          }).sort((a,b)=>a.weekStart-b.weekStart);
+          const ws2=history.map(w=>w.score),avg=ws2.length?Math.round(ws2.reduce((a,b)=>a+b,0)/ws2.length):0;
+          const wl=history.map(w=>`${w.weekStart.toLocaleString("default",{month:"short"})} ${w.weekStart.getDate()}`);
+          const ht={};HABITS_IDS.forEach(h=>{const p=history.length*7,d=history.reduce((a,w)=>a+(w.hb[h]||0),0);ht[h]={p,d,pct:p?Math.round((d/p)*100):0};});
+          const SUB=(v,l)=><button onClick={()=>setProgView(v)} style={{background:progView===v?"#e8ff47":"transparent",color:progView===v?"#080808":"#777",border:"1px solid "+(progView===v?"#e8ff47":"#2a2a2a"),padding:"5px 12px",borderRadius:"4px",fontSize:"9px",letterSpacing:"2px",textTransform:"uppercase",cursor:"pointer",fontFamily:"inherit",fontWeight:progView===v?"800":"400"}}>{l}</button>;
+          if(!history.length)return(<div style={{textAlign:"center",padding:"40px 20px"}}><div style={{fontSize:"32px",marginBottom:"12px"}}>📊</div><div style={{fontSize:"14px",color:"#e8ff47",fontWeight:"700"}}>No history yet</div></div>);
+          return (<div>
+            <div style={{display:"flex",gap:"6px",flexWrap:"wrap",marginBottom:"16px"}}>{SUB("overview","Overview")}{SUB("sessions","Sessions")}{SUB("habits","Habits")}</div>
+            {progView==="overview"&&(<>
+              <div style={{display:"flex",gap:"8px",marginBottom:"14px"}}>
+                {STAT("AVG WEEK",`${avg}%`,`${history.length} weeks`,SC(avg))}
+                {STAT("GYM",prog.gym_count,`of 60`,phase.color)}
+              </div>
+              {ws2.length>=2&&<div style={{background:"#141414",border:"1px solid #2a2a2a",borderRadius:10,padding:"14px 16px",marginBottom:10}}>
+                <Sparkline data={ws2} color="#e8ff47" height={60}/>
+                <div style={{display:"flex",justifyContent:"space-between",marginTop:"6px"}}>
+                  {wl.map((l,i)=><div key={i} style={{fontSize:"8px",color:"#777",textAlign:"center",flex:1}}>{l}</div>)}
+                </div>
+              </div>}
+              {history.map((w,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:"10px",padding:"10px 14px",marginBottom:"6px",background:"#141414",borderRadius:"7px",borderLeft:"3px solid "+SC(w.score)}}>
+                  <div style={{width:"60px",fontSize:"10px",color:"#999"}}>{wl[i]}</div>
+                  <div style={{flex:1,background:"#0e0e0e",borderRadius:"100px",height:"6px",overflow:"hidden"}}>
+                    <div style={{height:"100%",width:w.score+"%",background:SC(w.score),borderRadius:"100px"}}/>
+                  </div>
+                  <div style={{width:"36px",fontSize:"12px",fontWeight:"700",color:SC(w.score),textAlign:"right"}}>{w.score}%</div>
+                  <div style={{width:"24px",fontSize:"9px",color:"#777",textAlign:"right"}}>{w.workoutDays}✓</div>
+                </div>
+              ))}
+            </>)}
+            {progView==="sessions"&&(<>
+              <div style={{display:"flex",gap:"8px",marginBottom:"14px"}}>
+                {STAT("GYM",prog.gym_count,`session ${prog.gym_count}/60`,phase.color)}
+                {STAT("BOXING",prog.boxing_count,"sessions","#f87171")}
+              </div>
+              <div style={{background:"#141414",border:"1px solid #2a2a2a",borderRadius:10,padding:"14px 16px"}}>
+                <div style={{fontSize:9,color:"#ddd",letterSpacing:3,marginBottom:10}}>RECENT SESSIONS</div>
+                {(prog.session_log||[]).slice(-15).reverse().map((s,i)=>{
+                  const wt=WT.find(w=>w.id===s.type);
+                  return <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:i<14?"1px solid #1a1a1a":"none"}}>
+                    <div style={{fontSize:16}}>{wt?wt.icon:"?"}</div>
+                    <div style={{flex:1}}><div style={{fontSize:11,color:"#ddd"}}>{s.sessionId||s.type}</div><div style={{fontSize:9,color:"#555"}}>{s.date}</div></div>
+                    <div style={{fontSize:9,color:wt?wt.color:"#555"}}>{wt?wt.label:""}</div>
+                  </div>;
+                })}
+                {(!prog.session_log||prog.session_log.length===0)&&<div style={{fontSize:11,color:"#444"}}>No sessions logged yet</div>}
+              </div>
+            </>)}
+            {progView==="habits"&&(<>
+              {HABITS_IDS.map(h=>{const h2=ht[h],hab=HABITS.find(x=>x.id===h);return(
+                <div key={h} style={{background:"#141414",borderRadius:"8px",padding:"12px 14px",marginBottom:"8px",border:"1px solid #2a2a2a"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"8px"}}>
+                    <div style={{fontSize:"12px",color:"#ddd",fontWeight:"600"}}>{hab?hab.icon:""} {hab?hab.title:h}</div>
+                    <div style={{fontSize:"13px",fontWeight:"700",color:SC(h2.pct)}}>{h2.pct}%</div>
+                  </div>
+                  <div style={{background:"#0e0e0e",borderRadius:"100px",height:"6px",overflow:"hidden"}}>
+                    <div style={{height:"100%",width:h2.pct+"%",background:SC(h2.pct),borderRadius:"100px"}}/>
+                  </div>
+                  <div style={{fontSize:"9px",color:"#555",marginTop:"4px"}}>{h2.d} of {h2.p} days</div>
+                </div>
+              );})}
+            </>)}
+          </div>);
+        })()}
+
+        {tab==="logs"&&(
+          <div>
+            {LBL("ALL SESSION LOGS")}
+            {allWeeks.length===0?<div style={{textAlign:"center",padding:"40px 20px",color:"#555"}}>No logs yet.</div>:[...allWeeks].sort((a,b)=>new Date(b.week_id)-new Date(a.week_id)).map((row,wi)=>{
+              const isOpen=expandedLog===wi,data=row.data||{},wd2=new Date(row.week_id),wl2=`${wd2.toLocaleString("default",{month:"short"})} ${wd2.getDate()}`;
+              let tc=0,dc=0;FULL_DAYS.forEach(day=>{const d=data[day]||{};tc+=HABITS.length+1;dc+=HABITS_IDS.filter(h=>d[h]).length+(d.workout_done?1:0);});
+              const score=tc?Math.round((dc/tc)*100):0;
+              return (<div key={wi} style={{background:"#141414",border:"1px solid #2a2a2a",borderRadius:"10px",marginBottom:"10px",overflow:"hidden"}}>
+                <div onClick={()=>setExpandedLog(isOpen?null:wi)} style={{padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+                  <div><div style={{fontSize:"12px",color:"#fff",fontWeight:"700"}}>Week of {wl2}</div>
+                  <div style={{fontSize:"10px",color:"#666",marginTop:"2px"}}>{FULL_DAYS.filter(f=>(data[f]||{}).workout_done).length} workouts</div></div>
+                  <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+                    <div style={{fontSize:"16px",fontWeight:"800",color:SC(score)}}>{score}%</div>
+                    <span style={{color:"#555"}}>{isOpen?"▲":"▼"}</span>
+                  </div>
+                </div>
+                {isOpen&&<div style={{padding:"0 16px 16px"}}>
+                  {FULL_DAYS.map(day=>{
+                    const d=data[day]||{},hd=HABITS_IDS.filter(h=>d[h]).length;
+                    if(!d.workout_type&&!d.workout_done&&!d.note&&hd===0)return null;
+                    const wt=WT.find(w=>w.id===d.workout_type);
+                    return <div key={day} style={{padding:"8px 10px",background:"#0d0d0d",borderRadius:"7px",marginBottom:"6px",borderLeft:"3px solid "+(d.workout_done?(wt?wt.color:"#a8ff87"):"#333")}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"3px"}}>
+                        <div style={{fontSize:"11px",color:"#ccc",fontWeight:"600"}}>{day}</div>
+                        <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
+                          {wt&&<span style={{fontSize:"9px",color:wt.color}}>{wt.icon} {wt.label}</span>}
+                          {d.workout_done&&<span style={{fontSize:"9px",color:"#a8ff87"}}>✓</span>}
+                          <span style={{fontSize:"9px",color:"#555"}}>{hd}/{HABITS_IDS.length}</span>
+                        </div>
+                      </div>
+                      {d.note&&<div style={{fontSize:"11px",color:"#888",fontStyle:"italic"}}>"{d.note}"</div>}
+                    </div>;
+                  })}
+                </div>}
+              </div>);
+            })}
+          </div>
+        )}
+
+        {tab==="habits"&&(
+          <div>
+            {LBL("YOUR DAILY PROTOCOL")}
+            {HABITS.map(h=>{
+              const isOpen=expandedHabit===h.id;
+              return <div key={h.id} style={{background:"#141414",border:"1px solid #2a2a2a",borderRadius:"10px",marginBottom:"10px",overflow:"hidden"}}>
+                <div onClick={()=>setExpandedHabit(isOpen?null:h.id)} style={{padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+                  <div style={{display:"flex",gap:"12px",alignItems:"center"}}>
+                    <span style={{fontSize:"20px"}}>{h.icon}</span>
+                    <div style={{fontSize:"13px",color:"#fff",fontWeight:"700"}}>{h.title}</div>
+                  </div>
+                  <span style={{color:"#555"}}>{isOpen?"▲":"▼"}</span>
+                </div>
+                {isOpen&&<div style={{padding:"0 16px 16px",borderTop:"1px solid #222"}}>
+                  <div style={{fontSize:"12px",color:"#aaa",lineHeight:1.6,marginTop:"10px"}}>{h.desc}</div>
+                </div>}
+              </div>;
+            })}
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
